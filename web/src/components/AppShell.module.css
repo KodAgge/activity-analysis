@@ -1,0 +1,210 @@
+.shell {
+  min-height: 100vh;
+}
+
+/*
+ * Content starts at the top of the viewport. Nothing sits above it: the
+ * screen's own title is the first thing in the scroll, which is what every
+ * one of the six reference screenshots does and what the old wrapping text
+ * nav was in the way of.
+ *
+ * The bottom padding is the whole reason the bar can be `fixed` at all:
+ * the tab bar's own height, plus the home indicator's safe-area inset, plus
+ * a step of air so the last row of content ends clear of the bar rather
+ * than tucked against it. `--tabbar-inset` carries the first two, and
+ * `index.html` carries the `viewport-fit=cover` without which the second
+ * silently resolves to zero.
+ *
+ * This is not optional decoration. Without it the bar paints over live
+ * content at every scroll position short of the very end, and the reader
+ * gets a table header sliced in half.
+ */
+.main {
+  padding: var(--space-5) var(--gutter) calc(var(--tabbar-inset) + var(--space-8));
+}
+
+.content {
+  max-width: var(--content-max);
+}
+
+/*
+ * The store's own identity, in caption type at the end of the scroll. It
+ * answers "is this the store I think it is", which is asked on arrival and
+ * then not again, so it gets the position that costs the content nothing.
+ */
+.store {
+  max-width: var(--content-max);
+  margin-top: var(--space-10);
+  padding-top: var(--space-4);
+  border-top: var(--hairline);
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+}
+
+/*
+ * In the scroll flow, never over it, and never the loudest thing in it.
+ *
+ * Two rounds of getting this wrong, both worth keeping on the record.
+ *
+ * First it was a shadowed card floating above the tab bar, on the reasoning
+ * that a warning about a wrong-looking number should be on screen wherever
+ * that number is. What it did instead was cut the Overview's bar chart off
+ * above its zero line: eleven bars with no baseline, behind five lines of
+ * prose. A notice that destroys the thing it is warning about is not a
+ * trade worth making.
+ *
+ * Then it was in the flow but on `--raised` pure white at body size, which
+ * made it the highest-contrast element on the screen - a rare system state
+ * outshouting the screen's own title and every number under it. Contrast is
+ * a budget and chrome does not get to spend it.
+ *
+ * So: caption type, a warning glyph and one accent word, and no box of its
+ * own at all. An earlier version gave it a `--panel` fill, a hairline border
+ * and 12px of inner padding, which quieted the contrast but bought a second
+ * gutter: the page runs its ink at 24px and the strip started its at 39px,
+ * finishing 13px short of the content's right edge. A single gutter for
+ * everything on the page is the thing the reference is most consistently
+ * praised for, and a notice does not get an exemption. It is a bare row on
+ * the page gutter now, marked off by a rule under it rather than a box
+ * around it. Every word of the message is still here, one disclosure away.
+ *
+ * The rule is full-bleed and drawn as a pseudo-element, the same way
+ * `Section.module.css` draws its dividers and for the same reason: every
+ * other rule on the page runs edge to edge, and a notice that stopped its
+ * one rule at the gutter would be the only line on the screen that did.
+ */
+.notice {
+  position: relative;
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  max-width: var(--content-max);
+  margin-bottom: var(--space-4);
+  padding: 0 0 var(--space-2);
+  color: var(--accent);
+}
+
+.notice::after {
+  content: '';
+  position: absolute;
+  right: var(--bleed);
+  bottom: 0;
+  left: var(--bleed);
+  height: 1px;
+  background: var(--border);
+}
+
+.noticeIcon {
+  flex: none;
+  /* Baseline-aligned with the summary text rather than top-aligned: a
+     16px glyph against 11px type reads as a bullet, and a bullet sits on
+     the line it belongs to. */
+  align-self: center;
+  line-height: 0;
+}
+
+/* Also the whole body of the unreachable-store notice, which is short
+   enough to need no disclosure. */
+.noticeBody {
+  min-width: 0;
+  flex: 1;
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}
+
+.summary {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  justify-content: space-between;
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-body);
+  cursor: pointer;
+  /* Both spellings: Safari still ships the pseudo-element, everything else
+     reads `list-style`. Left alone, the default triangle lands outside the
+     flex row and knocks the whole line off the gutter. */
+  list-style: none;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+/*
+ * The disclosure's own control, and the quietest thing it can be while
+ * still reading as one.
+ *
+ * It was accent crimson, uppercase and letterspaced, which made it "the
+ * loudest small type on the page" (round-3 critic) - a rare system state's
+ * disclosure toggle out-shouting every metric on the screen. Contrast is a
+ * budget and chrome does not get to spend it, which is the same finding
+ * this strip has now had three times, in three different places.
+ *
+ * So: the summary line's own dim ink and size, with an underline to carry
+ * the affordance the colour used to. The word itself is unchanged - the
+ * uppercase was `text-transform`, never the content - and so is every word
+ * inside the disclosure.
+ */
+.more {
+  flex: none;
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.noticeText {
+  margin: var(--space-1) 0 0;
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}
+
+.noticeText code {
+  color: var(--accent);
+  font-size: 1em;
+}
+
+/* The stale notice's remedy, restated for the live region: a closed
+   `<details>` hides its own body from assistive technology. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (min-width: 60rem) {
+  .main {
+    padding: var(--space-8) var(--space-8) var(--space-10);
+    margin-left: var(--rail-width);
+  }
+
+  /* Centred in what the rail leaves, not left-aligned against it: on a
+     2560px monitor a capped column pinned to the rail leaves the whole
+     right half of the window empty on one side only. */
+  .content,
+  .store {
+    margin-inline: auto;
+  }
+
+  /* The rail takes the tab bar out of the bottom of the window, so the
+     scroll no longer has to budget for it. */
+  .main {
+    padding-bottom: var(--space-10);
+  }
+
+  .notice {
+    margin-inline: auto;
+  }
+}

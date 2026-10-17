@@ -1,0 +1,45 @@
+/*
+ * The scale bar, in the panel's own coordinates.
+ *
+ * `left: 0; right: 0` and no padding, deliberately: this box's content
+ * width has to be the panel's width, because `.scaleBar`'s percentage
+ * resolves against it. The inset is a margin on the children instead, so
+ * moving them in does not move the ruler's own basis.
+ *
+ * `--route-inset` is inherited from the panel that hosts the bar: see
+ * `Route.module.css` and `RouteMap.module.css`.
+ */
+.scale {
+  position: absolute;
+  right: 0;
+  bottom: var(--route-inset);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  pointer-events: none;
+}
+
+.scaleLabel {
+  margin-left: var(--route-inset);
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  line-height: var(--leading-tight);
+}
+
+/*
+ * The ruler. Its width is set inline, as a percentage of this container -
+ * that is the whole reason the container spans the panel.
+ *
+ * `--ink-dim` and 2px: annotation, not data. Inside the SVG this was a
+ * fraction of the trace's own extent and came out at the trace's weight in
+ * full `--ink`, which made a caption compete with the route.
+ */
+.scaleBar {
+  display: block;
+  margin-left: var(--route-inset);
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--ink-dim);
+}

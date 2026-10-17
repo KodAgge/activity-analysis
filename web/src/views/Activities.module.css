@@ -1,0 +1,465 @@
+/*
+ * The activity feed.
+ *
+ * Every size, space and radius here is a token from `theme/tokens.css`,
+ * each of which carries the measurement off `.claude/design-bar/strava/`
+ * that produced it. A one-off `font-size` in this file would be the thing
+ * the type scale exists to remove.
+ *
+ * The view's own `h1` block is gone: `theme/global.css` owns `h1` now, and
+ * `AppShell.module.css`'s `main.main h1` exists only to out-specify the
+ * view blocks that are being deleted one view at a time. Three views still
+ * carry theirs, so that rule stays; mine was not the last.
+ */
+
+.activities {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/*
+ * The title and the one control that holds every filter, on one line.
+ *
+ * This is the point of the rebuild. Nine labelled form controls used to
+ * stand between the title and the first activity, which at 412 px is the
+ * whole of the first screen: a reader opening a list of 307 runs saw a
+ * filter panel and no runs.
+ */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.filterToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--raised);
+  border: var(--hairline);
+  border-radius: var(--radius-pill);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  cursor: pointer;
+}
+
+.filterToggle[aria-expanded='true'] {
+  background: var(--panel);
+  border-color: var(--ink-dim);
+}
+
+.chevron {
+  color: var(--ink-dim);
+  transition: transform 120ms ease;
+}
+
+.filterToggle[aria-expanded='true'] .chevron {
+  transform: rotate(180deg);
+}
+
+/*
+ * How many filters are narrowing the feed, because the sheet that holds
+ * them is closed. A reader arriving on a shared filtered link sees a short
+ * feed, and this is what tells them why without opening anything.
+ */
+.filterCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--space-4);
+  padding: 0 var(--space-1);
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  color: var(--raised);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+}
+
+/*
+ * The sort chips.
+ *
+ * Full bleed and horizontally scrollable, which is what the reference does
+ * with a row of chips: the row runs off both edges of the screen rather
+ * than wrapping onto a second line, so the chrome above the feed stays one
+ * line tall whatever the labels are. `--bleed` is exactly the negation of
+ * the shell's gutter (`theme/tokens.css`), and the padding puts the first
+ * and last chip back on it.
+ */
+/*
+ * The gap and the chips' own horizontal padding are the two things that
+ * decide whether this row is clipped at all. Measured at 412 px: the five
+ * chips are 376.5 px of content, and at `--space-3` of side padding and
+ * `--space-2` of gap the row wanted 456 px against a 412 px viewport, so
+ * "Heart rate" was cut mid-word. At `--space-2` and `--space-1` it wants
+ * 400 px and every chip is whole. Narrower than that it scrolls and clips,
+ * which is what the reference itself does - `you-tab-weekly-stats-and-12-
+ * week-chart.jpg` cuts "Styrketrä..." mid-word at its own edge with no
+ * fade and no arrow - but at the width this is judged at, nothing is cut.
+ */
+.sortBar {
+  display: flex;
+  gap: var(--space-1);
+  margin-inline: var(--bleed);
+  padding-inline: var(--gutter);
+  overflow-x: auto;
+  /* A scrollbar drawn under a 32px row of chips is taller than the gap
+     below it and reads as a rule across the page. The row is scrolled by
+     touch, by trackpad or by the keyboard through the chips' own focus
+     order, none of which needs the bar. */
+  scrollbar-width: none;
+}
+
+.sortBar::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  background: var(--raised);
+  border: var(--hairline);
+  border-radius: var(--radius-pill);
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/*
+ * The selected chip: an accent *outline*, not an accent fill.
+ *
+ * Measured on the reference's own filter chips
+ * (`you-tab-weekly-stats-and-12-week-chart.jpg`, sampled with Pillow): the
+ * selected "Löpning" chip's interior is rgb(20,19,24) against a card
+ * background of rgb(20,20,20) - the same surface as the unselected chips
+ * beside it - and what marks it is a 3 px run of orange at its border and
+ * orange text. The unselected chips carry the same outline in grey,
+ * rgb(100,101,96). **The reference does not fill its selected chip.**
+ *
+ * Round 1 did, in solid `--accent`, which made a sort control the
+ * highest-chroma object on the screen: about 2050 px of saturated fill
+ * against a feed whose own accent is the PR badge, which is an
+ * achievement. The outline spends about 260 px of accent instead, an 87%
+ * reduction, and the loudest saturated thing on the page is content again.
+ * This is the same fault the shell fixed when it took the tab bar off pure
+ * white - see `.design-work/notes/p1-builder.md`, "the tab bar's contrast
+ * budget".
+ *
+ * The faint tint is the technique `TabBar` already uses for its active
+ * rail row: enough to separate the chip from the four outlines beside it
+ * at a glance, far short of a fill.
+ */
+.chipActive {
+  background: color-mix(in srgb, var(--accent) 6%, var(--raised));
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: var(--weight-bold);
+}
+
+/* The caret is drawn (see `SortMark`), and the ascending one is the same
+   path flipped, so a single glyph serves both directions. */
+.mark[data-direction='ascending'] {
+  transform: rotate(180deg);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/*
+ * The filter sheet.
+ *
+ * `[hidden]` has to be restated: the user agent's own `[hidden] { display:
+ * none }` loses to the `display: grid` on this class, so the panel would
+ * stay laid out while claiming to be hidden - visible on screen and,
+ * worse, still in the tab order.
+ */
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--panel);
+  border: var(--hairline);
+  border-radius: var(--radius-card);
+}
+
+.filters[hidden] {
+  display: none;
+}
+
+/*
+ * A range filter needs two columns of the filter grid: one 9rem track
+ * carrying two handles and a readout reading "0 km to 20 km+" is cramped
+ * to the point of being hard to grab. `min-width: 0` lets the item shrink
+ * below its content's intrinsic minimum rather than widening the row, and
+ * at the narrowest viewport the grid still resolves two columns, so this
+ * is a full-width row there rather than an overflow.
+ */
+.rangeField {
+  grid-column: span 2;
+  min-width: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  /* Sentence case, not uppercase: nothing in the six reference screenshots
+     uppercases a form label, and `--text-label` at 500 is what a stat's own
+     name is set in. One spelling of "a small name above a thing". */
+  font-weight: var(--weight-medium);
+}
+
+.field select,
+.field input {
+  padding: var(--space-2) var(--space-3);
+  background: var(--raised);
+  border: var(--hairline);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-small);
+  font-weight: var(--weight-regular);
+}
+
+/* Which slice of the results is on screen, beside the controls that move
+   it. `margin-right: auto` puts it on the content gutter with Previous and
+   Next together on the right, rather than centring three unlike things. */
+.range {
+  margin: 0 auto 0 0;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+}
+
+.note {
+  margin: 0;
+  color: var(--ink-dim);
+}
+
+.empty {
+  margin: 0;
+  padding: var(--space-6) 0;
+  color: var(--ink-dim);
+  /* One of the three states in this application that deliberately are not
+     `Absent`: it speaks for the whole page and carries a call to action a
+     generic reason string has no place for. It gets no panel of its own
+     for the same reason the staleness strip does not - see
+     `.design-work/notes/p1-builder.md`. */
+  max-width: 34rem;
+}
+
+.empty p {
+  margin: 0 0 var(--space-4);
+}
+
+/*
+ * The feed.
+ *
+ * One column on a phone. Above 60rem - the shell's own breakpoint, where
+ * the tab bar becomes a left rail - two, because a 1088px content box
+ * holding one 1088px-wide card is the "420px column in a sea of nothing"
+ * inverted: a card whose four stats are 270px apart is not a card.
+ */
+.feed {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 60rem) {
+  .feed {
+    grid-template-columns: repeat(auto-fill, minmax(26rem, 1fr));
+    gap: var(--space-4);
+  }
+}
+
+/*
+ * One activity.
+ *
+ * A card rather than a bare row, which is the one place this rebuild adds
+ * a surface rather than removing one: the reference's feed entry is a
+ * surface, and four stats and a header stacked in whitespace alone run
+ * into the next activity's header. The hairline is what light mode has to
+ * pay for the separation a dark page gets free from a tonal step.
+ */
+.card {
+  /* The containing block for the stretched link below. */
+  position: relative;
+  padding: var(--space-4);
+  background: var(--raised);
+  border: var(--hairline);
+  border-radius: var(--radius-card);
+}
+
+/* The whole card is the link's hit area (see `ActivityCard`), so it is the
+   whole card that has to respond. */
+.card:hover {
+  border-color: var(--ink-dim);
+}
+
+/*
+ * The head is a plain block now, not a row with an icon column: the sport
+ * glyph moved inline into `.meta` (see `SportIcon`), so the headline, the
+ * quiet line, the labels and the values all start on the same edge - one
+ * internal left edge instead of three.
+ *
+ * 24px under it, against 16px between the two stat rows. Related things
+ * have to sit closer than unrelated ones, and two rows of one stat block
+ * are more closely related to each other than the head is to the block -
+ * which round 1 had backwards, at 24px measured head-to-stats against 28px
+ * between rows.
+ */
+.head {
+  margin-bottom: var(--space-6);
+}
+
+/*
+ * The card's first line.
+ *
+ * `--text-body` at the `--weight-bold` `h2` already carries, which is
+ * deliberately a step *below* the `--text-stat` of the values underneath
+ * it, and the reference is what decides that. On
+ * `activity-detail-map-hero-and-sheet.jpg` the identity line above the
+ * stats measures a 10.0 dp cap - 14.2 dp of type, 16.3 px at the width
+ * this is judged at - against the stat values' 13.7 dp cap and 19.4 dp of
+ * type. **The numbers are the loudest thing on the reference's card and
+ * the line above them is not.** What is large there is the activity's own
+ * title, and this store has no usable one: 172 of 307 runs are called
+ * "Run".
+ *
+ * Round 1 set this at `--text-heading`, which put a 17 px headline over
+ * 18 px values - near enough the same cap height to read as one tier, so
+ * the slot said "headline" and the type said "equal", and a critic
+ * measuring both at 13 px called it exactly that. One px is not a
+ * hierarchy. This is a tier, stated: values 18/700, this 16/700, labels
+ * 12/500, the quiet line 12/400.
+ *
+ * The rung this would otherwise want - something between `--text-stat`
+ * and `--text-title`, about 21 px, so the date could out-size the values
+ * the way the reference's title out-sizes its own - does not exist in
+ * `theme/tokens.css`, and that file is frozen this round. Noted in the
+ * report rather than invented here: a one-off `font-size` in a view is
+ * what the type scale exists to remove.
+ */
+.when {
+  font-size: var(--text-body);
+  letter-spacing: -0.01em;
+}
+
+.link {
+  color: inherit;
+  text-decoration: none;
+}
+
+/*
+ * The stretched link: the card's hit area, from the one real `<a>` in it.
+ * See `ActivityCard` for why the whole card became the target and what
+ * that costs.
+ */
+.link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+/*
+ * Focus belongs to the card, not to the 120px of text the anchor happens
+ * to wrap - the overlay above is what a pointer hits, so the ring has to
+ * be drawn around the same shape.
+ *
+ * The anchor's own outline has to go with it, or the card is focused with
+ * two rings: the browser's, tight around the date, and this one around the
+ * card. Suppressing an outline is only safe where something replaces it,
+ * and the rule below is that replacement.
+ */
+.link:focus-visible {
+  outline: none;
+}
+
+.link:focus-visible::after {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-card);
+}
+
+/*
+ * The quiet line under the headline, which is exactly where the reference
+ * puts its own sport glyph, its relative time and its place. Ours carries
+ * the glyph, the sport and whatever the analysis layer has flagged about
+ * the run.
+ */
+.meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  line-height: var(--leading-tight);
+}
+
+.sport {
+  display: inline-flex;
+  align-items: center;
+  /* Tighter than the row's own gap: the glyph and the word it labels are
+     one object, and the badges after them are not. */
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+}
+
+/* Attached to the control's own class rather than to `.pager button`,
+   which styled by position: a button added anywhere else in this view -
+   the past-the-end state's own - rendered as an unstyled browser default
+   beside tokenised ones. */
+.button {
+  padding: var(--space-2) var(--space-5);
+  background: var(--raised);
+  border: var(--hairline);
+  border-radius: var(--radius-pill);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  cursor: pointer;
+}
+
+.button:disabled {
+  color: var(--ink-dim);
+  cursor: not-allowed;
+  opacity: 0.6;
+}

@@ -1,0 +1,18 @@
+/*
+ * The same quiet prose as a tag's reason beside it: a caption on the run,
+ * not a warning box. The PR badge above is the findable object; this only
+ * answers the question a missing one raises.
+ */
+
+.notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.note {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+  line-height: var(--leading-body);
+}

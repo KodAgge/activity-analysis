@@ -1,0 +1,403 @@
+/*
+ * The screen is a single column at the page gutter and nothing else: no
+ * card, no panel, no inner max-width. `AppShell.module.css` owns the gutter
+ * and `--content-max`; a second cap here would give the screen a right edge
+ * the chart below it does not share.
+ *
+ * There is deliberately no local `h1` rule. `theme/global.css` carries the
+ * measured title size, and the `font-size: 1.2rem` this file used to hold
+ * is exactly what `AppShell.module.css`'s `main.main h1` specificity hack
+ * exists to out-specify. Three views still carry theirs, so that hack
+ * stays; mine was not the last.
+ *
+ * The gap is the block rhythm the reference runs between one block and the
+ * next, 23 to 28 pt measured, `--space-8` here. `Section`'s `divided`
+ * assumes exactly this gap: its negative top margin eats half of it, which
+ * is what leaves 16 px above the rule and 32 px below.
+ */
+.progression {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+/* The title and the picker it introduces, closer together than the
+   screen's own block rhythm - the same binding `views/Overview.tsx` gives
+   its title and stat rail. */
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/*
+ * The distance picker: a `fieldset`, because a group of radios needs a
+ * group name, and `min-inline-size: 0` because a fieldset's default is
+ * `min-content` and one holding a row of nineteen pills would refuse to
+ * narrow, widening the document at phone width.
+ */
+.picker {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/*
+ * The group's name, set as the reference's own uppercase section band -
+ * "I ÅR", "UPPSKATTADE BÄSTA INSATSER" in `stats-totals-and-best-efforts`,
+ * measured at 11.8 dp and tracked. Visible rather than hidden: the band is
+ * how the reference labels every group on its stats screen, and a row of
+ * bare numbers is one of the few groups here that genuinely needs saying
+ * what it is a list of.
+ */
+.pickerLabel {
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/*
+ * The chip row, full bleed and scrolling sideways, which is what the
+ * reference does with its sport filter: its third chip is clipped by the
+ * screen edge, and that clipping is the whole affordance. The row escapes
+ * the page gutter with `--bleed` and puts it back as padding, so the first
+ * pill starts on the gutter with every other left edge on the screen while
+ * the last one can run off the edge rather than stopping short of it.
+ *
+ * The block padding is for the focus ring: `overflow-x` clips vertically
+ * too, and an outline offset past the row's own box would be cut off.
+ */
+.pills {
+  display: flex;
+  gap: var(--space-2);
+  margin-inline: var(--bleed);
+  padding-inline: var(--gutter);
+  padding-block: var(--space-1);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  /* So bringing the chosen pill into view leaves the gutter beside it
+     rather than parking it against the frame. */
+  scroll-padding-inline: var(--gutter);
+  /*
+   * A gutter-wide fade at each end, so a pill the scroll has taken past the
+   * edge goes out rather than being guillotined.
+   *
+   * The row is full bleed on purpose - a chip clipped by the screen edge is
+   * the reference's own scroll cue, and it is why the row does not stop at
+   * the gutter. But a hard vertical cut through a pill at x=0 reads as a
+   * rendering fault rather than as "there is more this way", which is
+   * exactly how a blind critic read it: "first chip flush against the
+   * frame, no leading inset". The fade is the inset - the last `--gutter`
+   * of the row is where a pill stops being solid - while the bleed itself
+   * is untouched.
+   *
+   * `transparent` at the outer stops and black inside: a mask reads the
+   * alpha channel, so black is "keep".
+   */
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--gutter),
+    #000 calc(100% - var(--gutter)),
+    transparent 100%
+  );
+}
+
+.pill {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+/*
+ * The input itself is hidden but still focusable and still the thing the
+ * keyboard drives: arrow keys move between radios in a group natively, and
+ * nothing here reimplements that. Clipped rather than `display: none`,
+ * which would take it out of the tab order and out of the accessibility
+ * tree along with the group it belongs to.
+ */
+.pillInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/*
+ * The pill. Measured on the reference's `Löpning` chip, calibrated through
+ * its own card gutter at 2.042 px/dp: 96 px tall, so 47 dp, fully rounded,
+ * around text whose cap puts it near 19 dp. That is a text-to-pill ratio of
+ * 0.41, which at our `--text-body` gives about a 40 px pill - `--space-3`
+ * of block padding either side of a tight line.
+ */
+.pillBody {
+  display: block;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--ink);
+  font-size: var(--text-body);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/*
+ * The chosen pill, marked three ways: accent ink, an accent ring and an
+ * accent tint - the reference's own active chip, which is accent text
+ * inside an accent outline on an otherwise unchanged surface.
+ *
+ * Three channels rather than colour alone, because `--series-*` being
+ * CVD-validated does not make the accent readable as "selected" to
+ * everyone on its own. The extra ring is an inset shadow rather than a
+ * thicker border and the weight does not change, so selecting a pill moves
+ * nothing: both would resize the pill and shunt the whole row sideways
+ * under the reader's finger.
+ *
+ * `color-mix` against `--raised` rather than `transparent`, so the tint is
+ * the same colour wherever the row is scrolled to - `--page` shows through
+ * a transparent mix and the pill would shift tone over a `--panel` strip.
+ */
+.pillInput:checked + .pillBody {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--raised));
+  color: var(--accent);
+}
+
+.pillInput:focus-visible + .pillBody {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/*
+ * The personal best: the one number this screen exists to show, and the
+ * only thing on the page set at the top of the type scale.
+ *
+ * The tiers, after a blind critic found four of six sizes sitting within
+ * two pixels of each other: 26 for the `<h1>` and this value, 17 for a
+ * section heading, 12 for every label, caption and footnote, 11 for the
+ * uppercase bands and the chart's own axis. Four steps, each a real one.
+ *
+ * **The value ties the `<h1>` rather than beating it, and that is the
+ * scale's ceiling rather than a choice.** `--text-title` is the largest
+ * rung `theme/tokens.css` has and tokens are frozen for this piece. It is
+ * also further than the reference ever goes: measured on
+ * `activity-detail-header-stats-and-map.jpg`, the headline distance stat
+ * is 19.4 dp under a 21.3 dp title, a ratio of 0.91, and nothing in the six
+ * screenshots sets a number above its own screen title. See the builder
+ * note for the rung this would want if the scale were open.
+ *
+ * **Size settles the ranking now, and colour has gone back to meaning one
+ * thing.** Round 2 set this at `--text-title` in `--accent`, because 26 px
+ * was the scale's ceiling and the crimson was what tipped it past an `<h1>`
+ * of the same size. It was not enough: measured as ink against the page's
+ * own ground, the record came to 226k against 771k for the word
+ * "Progression". `--text-display` (52 px) exists now, which is exactly
+ * twice the digit height - an 18.3 px cap becomes 36.6 - and ink grows with
+ * the square, so this is about four times the mark it was.
+ *
+ * With the size doing the work, the two candidate colours were measured
+ * rather than argued:
+ *
+ *   `--ink`     13.46:1 against `--page`, and a per-channel deviation from
+ *               it of 217+202+183 = 602
+ *   `--accent`   5.12:1, deviation 44+207+173 = 424
+ *
+ * So dark ink is 2.6x the contrast and 1.42x the ink for the same glyphs -
+ * at 52 px it wins the dominance outright, which crimson only won at 26 px
+ * by being the odd colour out. Taking it also gives the accent a single
+ * meaning on this screen: a record *mark in the chart*. The chosen pill
+ * keeps its accent outline because it is a control state, not a datum.
+ */
+.best {
+  margin: 0;
+}
+
+/*
+ * The uppercase band the reference introduces every group with -
+ * `GENOMSNITTLIG AKTIVITET PER VECKA`, `I ÅR`, `NÅGONSIN`, `UPPSKATTADE
+ * BÄSTA INSATSER` on `stats-totals-and-best-efforts.jpg`, measured at
+ * 11.8 dp. The same treatment the picker's own legend gets, so the two
+ * blocks on this screen are introduced the same way.
+ *
+ * A `<dt>`, not a heading: it names a value, and the heading it replaced is
+ * exactly what was deleted.
+ */
+.bestLabel {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bestValue {
+  /* The one measured step between a name and its number, the same
+     `--stat-gap` every `Stat` uses. */
+  margin: var(--stat-gap) 0 0;
+  color: var(--ink);
+  font-size: var(--text-display);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  letter-spacing: -0.01em;
+  /* Not tabular: a headline number is not a column, which is the same call
+     `Stat.module.css` makes and for the same reason. */
+  font-variant-numeric: proportional-nums;
+}
+
+/*
+ * Pace, heart rate and the date, on one dim line: the reference's own
+ * secondary line, which on `activity-detail-map-hero-and-sheet.jpg` runs a
+ * relative day and time, then the municipality and county, under the
+ * athlete name with a middot between its parts.
+ *
+ * The words stay dim and the figures take full ink at medium weight, which
+ * is the reference's list-row idiom - dim label, bold value - compressed
+ * onto one line. The separator is generated rather than written, so an
+ * item can be added or removed without anyone having to count middots.
+ */
+.bestDetail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+  margin: var(--space-2) 0 0;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  line-height: var(--leading-body);
+}
+
+.bestDetail > span + span::before {
+  content: '·';
+  margin-right: var(--space-2);
+  color: var(--border);
+}
+
+.bestFigure {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}
+
+/*
+ * The chart's key and the one control that changes what it draws, on one
+ * line where there is room for one and two where there is not.
+ */
+.key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/*
+ * The one control that changes what the chart draws.
+ *
+ * **It is a pill because a 16px checkbox beside 48px chips is two faults at
+ * once**, and a blind critic named both: an inconsistency in a panel whose
+ * other controls are pills, and a touch target a quarter the size of the
+ * ones above it. The whole label is the target now - 40px tall against the
+ * chips' 48, which is the smaller rung of the same shape rather than a
+ * different kind of object.
+ *
+ * The checkbox itself stays visible, and that is what keeps this from being
+ * read as another distance chip: the pills above are a one-of-many choice
+ * and carry no glyph, this is a two-state toggle and carries the glyph
+ * everyone already knows. Its own accent is the palette's, so a checked box
+ * and a chosen pill agree.
+ */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  line-height: var(--leading-tight);
+  cursor: pointer;
+}
+
+.toggle:focus-within {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.toggleInput {
+  width: 1.125rem;
+  height: 1.125rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+/*
+ * The footnote: the three facts about this chart that a reader cannot get
+ * from looking at it, folded away. See the call site for why it is folded
+ * rather than shortened, and `components/AppShell.module.css` for the
+ * disclosure this copies - same dim caption summary, same underline
+ * carrying the affordance, same suppressed marker in both spellings so the
+ * default triangle cannot knock the line off the gutter.
+ */
+.footnote {
+  margin: var(--space-4) 0 0;
+  max-width: 44rem;
+}
+
+.footnoteSummary {
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-body);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+  list-style: none;
+}
+
+.footnoteSummary::-webkit-details-marker {
+  display: none;
+}
+
+.footnoteBody {
+  margin: var(--space-2) 0 0;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  line-height: var(--leading-body);
+}
+
+.status {
+  margin: 0;
+  color: var(--ink-dim);
+}

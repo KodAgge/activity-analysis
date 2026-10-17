@@ -1,0 +1,316 @@
+/*
+ * See `RowList.tsx` for what was measured off
+ * `.claude/design-bar/strava/stats-totals-and-best-efforts.jpg` and where.
+ * Everything here is a token; a one-off size in this file would be the
+ * thing the type scale exists to remove.
+ */
+
+.group {
+  min-width: 0;
+}
+
+/*
+ * The group band.
+ *
+ * 32 dp tall in the reference and full-bleed, with its text on the page
+ * gutter: `--bleed` cancels the shell's horizontal padding and `--gutter`
+ * puts the ink back where every other left edge on the page is.
+ *
+ * `--grid` rather than `--panel`. The reference's band is a tonal step
+ * *away* from its page - pure black behind the heading against rgb(18,18,18)
+ * behind the rows - and in a light palette the step away from `--page` is
+ * the darker one. `--panel` is lighter than the page and would read as a
+ * surface lifted toward the reader, which is the opposite of what a group
+ * heading is.
+ *
+ * Tracking is near zero because the reference's is: its band sets 7.4 dp
+ * per character against a 7.7 dp natural uppercase advance, so the letters
+ * are not opened up at all. 0.02em is that, kept non-zero only because 11 px
+ * uppercase needs the hair of air to stop the caps touching.
+ */
+.band {
+  display: flex;
+  align-items: center;
+  height: 2rem;
+  margin: 0 var(--bleed);
+  padding: 0 var(--gutter);
+  background: var(--grid);
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.list {
+  /*
+   * No list marker: the order is carried by the rows themselves (a ladder
+   * of distances is read as a ladder), and `<ol>` is here for the semantic
+   * that the order is data, not for nineteen numerals down the left edge.
+   */
+  margin: 0;
+  padding: var(--space-3) 0 0;
+  list-style: none;
+}
+
+.row {
+  min-width: 0;
+}
+
+/*
+ * The row itself, and the whole of its hit area.
+ *
+ * Full-bleed the way the band is, so a hover or a focus ring marks the
+ * whole width of the screen the way a list row does, while the label's ink
+ * still starts on the page gutter. The reference's rows are a 64 dp slot
+ * with the content centred in it; ours hold two lines, so the padding is
+ * `--space-3` and the pitch lands at about 62 px.
+ *
+ * **No rule between rows.** A luminance scan across the reference's list
+ * finds none: rows are separated by whitespace and groups by the band.
+ */
+.inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    'label value chevron'
+    'meta detail chevron';
+  align-items: baseline;
+  column-gap: var(--space-3);
+  row-gap: var(--space-1);
+  margin: 0 var(--bleed);
+  padding: var(--space-3) var(--gutter);
+  color: inherit;
+  text-decoration: none;
+}
+
+a.inner:hover {
+  background: var(--panel);
+}
+
+a.inner:focus-visible {
+  /* Inset, because the row is full-bleed: an outline drawn outside it would
+     be painted off the edge of the screen on both sides. */
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.label {
+  grid-area: label;
+  min-width: 0;
+  color: var(--ink);
+  font-size: var(--text-body);
+  line-height: var(--leading-tight);
+}
+
+/*
+ * A size larger than its label as well as bolder - measured, see
+ * `RowList.tsx`.
+ *
+ * **Tabular figures, and this is a reversal.** The first cut set
+ * proportional ones, on the argument that a value is read across from its
+ * own label rather than down a column. That is wrong for this component:
+ * the values are right-aligned in a track of their own, which *is* a
+ * column, and Schibsted Grotesk's proportional `one` is 828/2048 em against
+ * `zero`'s 1294 - 4.1 px of difference per digit at `--text-stat`'s 18 px,
+ * which is most of a digit. Measured off the phone capture: two five-
+ * character times of the real ladder differed by 4.3 px of ink, and the
+ * colon in its twelve times sat at three different x positions spanning 5 px, so the
+ * minutes were not over the minutes. `tnum` puts every digit, and the period
+ * and comma, on a 1300/2048 advance; after it the colon lands on the same
+ * pixel in all twelve and the two times differ by 0.4 px, which is the last
+ * glyph's side bearing and not its advance.
+ *
+ * The face carries the feature: `schibsted-grotesk-700.woff2`'s GSUB lists
+ * `tnum`, mapping each digit to a `.tf` variant. This is not the `.mono`
+ * class - the value stays in the sans, which is piece 1's measured finding
+ * about the reference and is not up for revision; only the figure set
+ * changes.
+ *
+ * The colon is *not* in the `tnum` mapping and keeps its 623 advance, which
+ * is correct: it is punctuation, and two times with the same digit count
+ * have the same number of colons.
+ */
+.value {
+  grid-area: value;
+  color: var(--ink);
+  font-size: var(--text-stat);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  grid-area: meta;
+  min-width: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}
+
+.metaItem {
+  white-space: nowrap;
+}
+
+/*
+ * An empty slot is not a flex item on a phone, and this is a layout bug
+ * rather than a tidiness preference.
+ *
+ * `.meta` is a flex container and `.inner` aligns its grid items on their
+ * baselines. A flex container takes its baseline from its **first** item, so
+ * a leading empty span - no text, no baseline of its own - handed the row
+ * the span's bottom edge instead of the date's baseline, and the rows whose
+ * first slot was empty came out 69.0 px tall against 66.6 px for the rows
+ * whose first slot was filled. Measured at 412 px, and visible as a limp in
+ * the ladder's rhythm.
+ *
+ * Taking it out of flow entirely is what a phone wants anyway: there is no
+ * column to hold open in a wrapped run of text.
+ */
+.metaItemEmpty {
+  display: none;
+}
+
+.separator {
+  padding: 0 0.4em;
+}
+
+/*
+ * A step larger than `.meta`, and the distinction is what the two are.
+ * `detail` is the value restated in another unit - a measurement in its own
+ * right, which is why the pace is on this page at all - while `meta` is the
+ * qualifiers that say which thing the value came from. One size apart says
+ * that without a second colour or a second weight.
+ */
+.detail {
+  grid-area: detail;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  line-height: var(--leading-body);
+  /* Tabular for the same reason `.value` is: it sits in the same
+     right-aligned track, directly under the value, and a column of paces
+     whose digits do not line up with each other is the same miss one step
+     quieter. `.meta` is left as proportional figures - it is a run of prose
+     fragments on a phone, not a column. */
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/*
+ * The chevron sits in its own column and is centred against the whole row,
+ * not against a baseline - the reference's arrow is centred in the 64 dp
+ * slot.
+ *
+ * Three measurements, all off the reference, and the size is the one this
+ * component has now got wrong in both directions.
+ *
+ * **The chevron is sized against the time beside it, not against the
+ * screen.** On the reference the arrow's ink is 38 x 20 device px and the
+ * value's cap is 41, so the chevron is **0.93 of the value's cap height**.
+ * Scaling by screen width instead - 12.7 dp of a 360 dp phone is 14.5 px of
+ * our 412 - is what produced a 20 px box here, and it is the wrong
+ * normalisation: our `--text-stat` is a rung below the reference's value
+ * size (18 px against its 21.9 px normalised, see the builder notes), so a
+ * chevron scaled to the reference's *screen* ends up taller than our own
+ * time. Measured on the shipped page it was 16 px of ink against a 13.3 px
+ * cap, a ratio of 1.20 where the reference's is 0.93 - the chevron was the
+ * tallest thing in the row.
+ *
+ * **Weight.** The reference's stroke is 3.9 device px measured perpendicular
+ * to a 45-degree arm, against a 7.5 px stem in the bold digits beside it:
+ * **the chevron is drawn at about half the weight of the time**, 0.096 of
+ * the value's cap height. Ours was 2.04 CSS px against a 13.3 px cap, 0.153
+ * - and nineteen of those stacked into a dark stripe down the right edge.
+ *
+ * So: a 16 px box with an 11-unit path and a 1.25-unit stroke on a 16-unit
+ * viewBox. That is 12.25 px of ink at a 1.25 px stroke, which against our
+ * 13.3 px cap is 0.92 and 0.094 - the reference's two ratios.
+ *
+ * **Colour.** `--ink`, not `--ink-dim`, and this survived the weight fix.
+ * The reference's chevron peaks at 255, exactly what its labels peak at: it
+ * is set in the row's own ink. An earlier cut dimmed it and beside the
+ * reference it read as a smudge where the reference reads as a control. Full
+ * ink at a hairline stroke is a different object from full ink at a heavy
+ * one, and it was the stroke that was wrong.
+ */
+.chevron {
+  grid-area: chevron;
+  align-self: center;
+  width: 1rem;
+  height: 1rem;
+  color: var(--ink);
+}
+
+/*
+ * Desktop: the same row on one line.
+ *
+ * The qualifiers stack under the label at 412 px because there is no room
+ * beside it. At 1088 px there is, and a two-line phone row stretched across
+ * a desktop leaves the value marooned from a half-empty second line.
+ * Nothing moves in the DOM - only the grid areas change - so the reading
+ * order and the accessible name are identical at both widths.
+ */
+@media (min-width: 60rem) {
+  .inner {
+    grid-template-columns: minmax(7rem, 12rem) minmax(0, 1fr) auto auto auto;
+    grid-template-areas: 'label meta value detail chevron';
+    row-gap: 0;
+  }
+
+  /*
+   * The qualifiers become columns.
+   *
+   * On a phone they are one run of text separated by middots, because there
+   * is only room for a run. Given 1088 px there is room for the run to
+   * spread, and spread evenly they line up down the page - every row of a
+   * list like this carries the same fragments in the same order, so the
+   * dates land under the dates and the counts under the counts, and the
+   * reader gets the column alignment a wide screen is for without the
+   * screen having to be a table.
+   *
+   * `grid-auto-flow: column` over `grid-auto-columns` rather than a fixed
+   * track count, because the component does not know how many fragments a
+   * caller passes. **Give every row in one list the same number**, or the
+   * columns will not line up between them.
+   *
+   * The separators go with the run: a middot between two aligned columns is
+   * punctuation with nothing left to separate. They are `aria-hidden`
+   * either way, so nothing changes for a screen reader at either width.
+   */
+  .meta {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    column-gap: var(--space-4);
+  }
+
+  .metaItem {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /*
+   * And back in at this width, because here the empty slot has a job: the
+   * run is a column track set, and a row that skipped its empty cell would
+   * shift every later fragment one column left and break the alignment down
+   * the page that this layout exists for.
+   */
+  .metaItemEmpty {
+    display: block;
+  }
+
+  .separator {
+    display: none;
+  }
+
+  .detail {
+    min-width: 5rem;
+  }
+}

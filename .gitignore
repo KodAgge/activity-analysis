@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+web/dist/
+web/playwright-report/
+web/test-results/
+web/src/api/schema.d.ts.json
+
+# Data: everything except the committed example fixtures
+data/*
+!data/examples/
+!data/examples/**
+
+# Secrets / local config
+.env
+
+# Privacy scan denylist: the list is itself the personal data it guards against
+privacy-denylist.*
+
+# Claude Code instructions local to this machine: accounts, remotes, auth
+CLAUDE.local.md
+
+# WSL / Windows alternate data stream artifacts
+*:Zone.Identifier
+
+# direnv local environment (per-repo gh identity)
+.envrc
+
+# Lavish review artifacts (scratch review surface)
+.lavish/
+
+# Claude Code local state, including worktrees
+.claude/
+
+# Implementation plans, design documents and the backlog: the maintainer's
+# working notes, kept in a private repository rather than published here
+docs/plans/
+docs/specs/
+docs/BACKLOG.md
+web/.design-work/
+
+# Spike scratch work: real GPS traces must never be committed
+web/spike/

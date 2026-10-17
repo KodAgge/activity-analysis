@@ -1,0 +1,77 @@
+/*
+ * The panel: the trace's `<svg>` and the scale bar overlaid on it.
+ *
+ * The wrapper shrink-wraps the SVG, so its content box *is* the rendered
+ * panel - which is what makes the scale bar's width percentage mean what
+ * `routeMath.ts`'s `scaleBarWidthFraction` says it means.
+ */
+.wrap {
+  position: relative;
+  /* One shared inset for everything drawn on top of the panel. The hero
+     that hosts this sets it too, so the back control floating over the
+     trace and the scale bar under it land on the same gutter - see
+     `views/ActivityDetail.module.css`. The fallback is for the route drawn
+     outside a hero. */
+  --route-inset: var(--hero-inset, 1rem);
+  /* Narrows at the route's own ratio inside a height cap, and is `auto`
+     where there is none - see `RouteMap.module.css`'s `.wrap`, which
+     carries the same rule and says why it has no fallback. The SVG's
+     rendered height stays its width over the clamped ratio, which is what
+     the scale bar assumes (see the note on `max-height` below). */
+  width: min(100%, calc(var(--hero-max-height) * var(--route-ratio)));
+  margin-inline: auto;
+}
+
+/*
+ * The SVG's viewBox is the route's own padded bounding box, so its
+ * intrinsic aspect ratio is the route's aspect ratio - and an
+ * out-and-back along a straight path has a bounding box tens or hundreds
+ * of times taller than it is wide. Left to the intrinsic ratio, the panel
+ * would render thousands of pixels tall and push everything below it off
+ * the document; the mirror case would render a hairline strip. A fixed
+ * box plus the SVG's own `preserveAspectRatio="xMidYMid meet"` bounds
+ * both cases without touching the geometry: the trace is letterboxed
+ * inside the panel at its true shape, cosine correction included.
+ */
+.route {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* The fallback only. `Route.tsx` sets an inline `aspect-ratio` from the
+     route's own clamped shape, which is what actually sizes the panel; this
+     is what the element renders as if that inline style is ever absent. */
+  aspect-ratio: 3 / 2;
+}
+
+/*
+ * The layers over the trace: the replay's canvas and the moment's dot. The
+ * wrapper's box is the trace SVG's own, so `inset: 0` puts each exactly on
+ * it. `will-change` gives each its own compositing layer, which is what
+ * keeps a frame from repainting the static trace underneath - see
+ * `Route.tsx`.
+ */
+.layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  will-change: transform;
+}
+
+/*
+ * No `max-height`.
+ *
+ * There used to be an 85vh last-resort guard here, for a very short window,
+ * and it has to go now that the scale bar is sized from the panel rather
+ * than from the SVG's user units. A `max-height` that binds makes the
+ * rendered height something other than the width over the clamped ratio,
+ * which is the one assumption `scaleBarWidthFraction` rests on - so the bar
+ * would quietly over-state the distance it names. A wrong distance
+ * annotation is worse than a tall panel, and the clamp already caps the
+ * panel's height at its own width (`TALLEST_PANEL_RATIO` is 1), which is
+ * the working bound and always was.
+ */
+
+/* The scale bar drawn over this panel is `ScaleBar.module.css`, shared with
+   `RouteMap`; it reads `--route-inset` from `.wrap` above. */

@@ -1,0 +1,416 @@
+:root {
+  --page: #E9EEF1;
+  --panel: #F2F5F7;
+  --raised: #FFFFFF;
+  --border: #D3DDE4;
+
+  /* The outline of a *control* that is currently doing nothing: an
+     unselected filter chip, and anything else that has to be findable
+     before it has been used.
+
+     Separate from `--border`, which is the edge of a surface, for the same
+     reason `--chart-rule` had to leave `--grid`: a hairline that only has
+     to say "this box ends here" and one that has to say "this is a thing
+     you can press" are not the same requirement, and the weaker of the two
+     was serving both.
+
+     The value is the reference's own, off
+     `you-tab-weekly-stats-and-12-week-chart.jpg` at that card's 3 px/dp:
+     its unselected chip border is rgb(96,96,92) on a rgb(20,20,20) page,
+     2.92:1, where `--border` was 1.18:1 against ours - six times fainter,
+     and a critic measuring the two rows side by side found our unselected
+     chips vanished entirely at a third scale. #7A8B9C is 2.99:1.
+
+     Worth recording as a cross-check that the palette is calibrated
+     against the same source: the reference's *selected* chip border is
+     4.40:1 on its page and `--ink-dim` is 4.39:1 on ours. */
+  --border-strong: #7A8B9C;
+  --grid: #DCE4EA;
+
+  /* A rule drawn *inside* a chart: the horizontal ladder a plot is read
+     against.
+
+     Separate from `--grid`, which it used to share, because `--grid` has
+     become a surface as well as a line - `ZoneBar`, `RowList` and `Splits`
+     all fill with it - and a fill and a hairline cannot want the same
+     value. Raising `--grid` itself to fix the ladder would have turned
+     RowList's tonal band into a mid-grey block.
+
+     The value is the reference's own, measured on
+     `you-tab-weekly-stats-streak-calendar.png` so both readings come off
+     one calibration: its chart ground is rgb(20,20,20) and its gridline
+     peaks at rgb(66,66,66), a contrast of 1.83:1, while its full-bleed
+     section divider is rgb(1,1,1) on the same ground, 1.13:1. So the
+     reference draws a *chart* rule stronger than a *page* rule, and ours
+     had it the other way round: `--grid` was 1.10:1 against `--page` and
+     `--border` 1.18:1, which two separate critics read as a plot that
+     "frames nothing" and as "a 3% luminance delta". This is 1.83:1, the
+     reference's own figure. */
+  --chart-rule: #A5B3C0;
+  --ink: #10243A;
+  --ink-dim: #5A7086;
+  --accent: #bd1f44;
+
+  /* The hover readouts' drop shadow. Ink at 12%, so it is the page's own
+     colour rather than a neutral grey; a token because three chart modules
+     were each carrying the same literal. */
+  --shadow: rgb(16 36 58 / 12%);
+
+  /* Categorical. Fixed order, never reordered or cycled: the order is part
+     of the validation, and an earlier ordering failed deutan separation. */
+  --series-1: #bd1f44;
+  --series-2: #993aae;
+  --series-3: #8d5e00;
+  --series-4: #0999b2;
+  --series-5: #007742;
+
+  /* Sequential, for the three reference paces, which are ordinal: slow,
+     median, fast. Ordinal quantities get a ramp here rather than the
+     categorical palette, the same decision the zone ramp below records, and
+     using the categorical set for an ordered trio was the mistake this
+     replaces. Light to dark, so the ordering is legible without the legend.
+     Validated by src/theme/rampContrast.test.ts rather than chosen by eye:
+     each step clears 3:1 against both --page and --panel, and adjacent
+     steps stay separated under deutan and protan simulation. Both surfaces,
+     because --page is the one a trend chart is actually stroked over -
+     nothing between body and .chart paints a background - while --panel is
+     what a future chart on a raised surface would sit on, and a bar tied to
+     one of them is a bar that stops meaning anything the moment the ramp
+     moves. --page is the darker of the two and so the binding one here. */
+  --pace-1: #478aa4;
+  --pace-2: #1f6480;
+  --pace-3: #073c52;
+
+  /* The area between the slow and fast reference-pace series, where a chart
+     draws their spread as an envelope around the median rather than as three
+     curves. Not a fourth step and not a new hue: it is `--pace-2` at 22% over
+     `--page`, computed once here because a canvas fill takes a colour rather
+     than an expression.
+
+     Why an area at all: the three series are ordered at essentially every
+     instant and the common swing along them is 8.7 times the median gap
+     between them, so at any honest scale they braid - measured across 20
+     sampled columns, three separate runs resolved in only 9, with a median
+     clear gap of 3 px. The spread is context for the middle line, and an
+     area says that where three curves cannot.
+
+     **It has to out-ink the gridlines that cross it, and the first attempt
+     did not.** Measured as deviation from `--page`, summed across channels:
+     the band was 95, a gridline 176 and the series 356 at its darkest. A
+     declared data series fainter than the furniture drawn over it is the
+     fault, whatever its area. At 50% the band is 227, which puts the three
+     in the order they belong - furniture 176, its context 227, its subject
+     453 at full coverage. */
+  --pace-band: #84A9B8;
+
+  /* Pace on the route, slow to fast: Garmin's blue-green-red with a
+     yellow step between green and red. Validated in rampContrast.test.ts. */
+  --pace-map-1: #2563eb;
+  --pace-map-2: #00799a;
+  --pace-map-3: #15803d;
+  --pace-map-4: #b8860b;
+  --pace-map-5: #b91c1c;
+  --pace-map-stopped: #7b8794;
+  --pace-map-outline: #c3ccd4;
+
+  /* Ordinal. Heart rate zones increase, so they get a sequential ramp rather
+     than the categorical palette. Using the categorical one here was the
+     original mistake. */
+  --zone-1: #eeb2b3;
+  --zone-2: #e88e90;
+  --zone-3: #dd656d;
+  --zone-4: #ca3449;
+  --zone-5: #a6002b;
+  --zone-below: #DCE4EA;
+
+  /* ---------------------------------------------------------------------
+     Type scale. Measured, not chosen.
+     ---------------------------------------------------------------------
+     Every size below was read off the screenshots in
+     `.claude/design-bar/strava/` with Pillow: find the glyph's column run,
+     then its first and last lit row, which gives a cap height in device
+     pixels. Cap height is the only measurement a screenshot can give
+     honestly - the font size itself is invisible - so each one is divided
+     by Schibsted Grotesk's own cap ratio to get a size in our face.
+     `sCapHeight / unitsPerEm` is 1440 / 2048 = 0.7031 for the 700 weight,
+     read out of `theme/fonts/schibsted-grotesk-700.woff2` with fontTools.
+
+     Both reference phones are 3x. The Android shots (`stats-totals...`,
+     `activity-detail-header...`) are 1080 physical px wide, and their
+     content gutter measures 72 px, a round 24 dp, which fixes the device
+     at 360 dp wide. The iOS shots (`you-tab-weekly-stats-streak...`,
+     `activity-detail-stat-grid...`) were downscaled before saving; their
+     scale is recovered from the same 24 pt gutter, giving 393 pt and
+     402 pt respectively.
+
+     Measurement                                              cap     size
+     ---------------------------------------------------------------------
+     "Statistik", app-bar screen title, stats-totals         17.0dp  24.2dp
+     "Löpning på kvällen", in-content title, activity-detail 15.0dp  21.3dp
+     km stat value, activity-detail-header                   13.7dp  19.4dp
+     km stat value, activity-detail-stat-grid                12.2dp  17.3dp
+     mi stat value, you-tab-streak                           12.3dp  17.5dp
+     "This week" / month section title, you-tab              12.3dp  17.5dp
+     "Löprundor" / "400 m" list row, stats-totals            11.7dp  16.6dp
+     "Distans" stat label, activity-detail-header             8.7dp  12.3dp
+     "Distance" stat label, activity-detail-stat-grid         7.8dp  11.1dp
+     "I ÅR" uppercase section band, stats-totals              8.3dp  11.8dp
+     "Home"/"Maps" tab bar label, you-tab-streak              7.6dp  10.8dp
+
+     `--text-title` is the one value not taken at face value. Strava's
+     24 dp screen title lives in an app bar on a 360 dp phone, which is
+     6.7% of the screen width; our title is the hero of the scroll and is
+     judged at 412 px, where the same fraction is 27 px. 26 px is that,
+     rounded to the scale, and sits between Strava's two titles.
+
+     `--text-small` is the only interpolated step: nothing in the
+     screenshots measures 14 dp. It exists because a dense table needs a
+     rung between body and label, and guessing one per view is worse.
+
+     `--text-stat-lg` is the second interpolated step, and it exists for a
+     shape the reference does not have. Strava sets a section title and the
+     stat values under it at the same size - 17.5 pt both, measured on
+     `you-tab-weekly-stats-streak-calendar.png` - and gets away with it
+     because it puts *three* stats under one title, so the row outweighs the
+     heading by mass. A screen with one headline number per section has no
+     row: at `--text-heading` 17 px against `--text-stat` 18 px the two cap
+     heights are 12.0 and 12.7, within one device pixel at 3x, and the
+     number never out-ranks its own heading. 24 px is a 16.9 px cap, a
+     clear step over both the heading and a 14 px chip label's 9.8, and it
+     stays under `--text-title` so the screen's own name is still the
+     largest thing on it. */
+  --text-title: 1.625rem;   /* 26px - the screen's own name, once per view */
+  --text-heading: 1.0625rem; /* 17px - a section within the screen */
+  --text-stat: 1.125rem;    /* 18px - a measured value, the thing being read */
+  --text-body: 1rem;        /* 16px - prose, list rows */
+  --text-small: 0.875rem;   /* 14px - dense table body (interpolated) */
+  --text-stat-lg: 1.5rem;   /* 24px - see below */
+  --text-display: 3.25rem;  /* 52px - see below */
+  --text-label: 0.75rem;    /* 12px - the name above a stat value */
+  --text-caption: 0.6875rem; /* 11px - eyebrows, footnotes */
+  --text-tab: 0.625rem;     /* 10px - phone tab labels, five to a 360px bar; see TabBar.module.css */
+
+  /* Strava sets every value and every title in the sans face at 700, and
+     every label at 400. Nothing numeric is set in a mono face anywhere in
+     the six screenshots: `.mono` stays for columns that must align, not
+     for stat values. */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 700;
+
+  /* `--text-display` is the third interpolated step and the only rung above
+     the screen title. Nothing in the six screenshots measures it: the
+     reference's largest type anywhere is its 24.2 dp app-bar title, and its
+     headline stat sits *under* that at 19.4 dp, a ratio of 0.91.
+
+     It exists because one screen in this application is a single number
+     with a chart under it. On `views/Progression.tsx` the personal best is
+     the reason the screen is opened, and at `--text-title` - the ceiling
+     before this - a blind critic measured it at 226k of ink against 771k
+     for the word "Progression" and 1469k for a footnote. A number cannot be
+     the subject of a screen at a fifth of the ink of its own navigation
+     label.
+
+     52px is twice the digit height it had: `--text-title` at our cap ratio
+     of 0.7031 gives an 18.3px cap, and this gives 36.6px. Use it for a
+     value that is the whole point of a screen, never for a heading - a
+     title above it stays `--text-title`, because the rung exists to rank a
+     number over a name rather than to make a second title. */
+
+  /* Titles and stat values are set tight - a two-line activity title in
+     `activity-detail-header` measures 1.17 between baselines. Body copy
+     gets the looser figure. */
+  --leading-tight: 1.15;
+  --leading-body: 1.45;
+
+  /* ---------------------------------------------------------------------
+     Spacing. Also measured, on the same screenshots.
+     ---------------------------------------------------------------------
+     Content gutter 72px/3 = 24dp, symmetric (the "4" of "Löprundor 4"
+     ends 73px from the right edge). Title baseline to the first stat
+     label 19dp; stat label baseline to its value 8.7dp; stat value
+     baseline to the card below it 31dp; list row pitch 64dp; the
+     uppercase section band is 32dp tall. Those land on a 4px grid, so
+     that is the grid. */
+  --space-1: 0.25rem;  /* 4px */
+  --space-2: 0.5rem;   /* 8px */
+  --space-3: 0.75rem;  /* 12px */
+  --space-4: 1rem;     /* 16px */
+  --space-5: 1.25rem;  /* 20px */
+  --space-6: 1.5rem;   /* 24px */
+  --space-8: 2rem;     /* 32px */
+  --space-10: 2.5rem;  /* 40px */
+  --gutter: var(--space-6);
+
+  /* Card corner radius, measured off the two rounded cards in the set by
+     solving for r from the antialiased inset of the first lit row: 24px/3
+     = 8.0dp in `activity-detail-header`, 19.5px/2.05 = 9.5dp in
+     `activity-detail-stat-grid`. `--radius-sm` is the existing 6px the
+     inputs and chips already use; `--radius-pill` is Strava's
+     fully-rounded button and filter chip. */
+  --radius-sm: 6px;
+  --radius-card: 10px;
+  --radius-pill: 999px;
+
+  /* Strava separates a list row from the next with whitespace and a tonal
+     band, never a rule: a luminance scan across 120 rows of the stats list
+     finds no divider at all. A hairline is for the one place light mode
+     needs what a tonal step gives dark mode free - the edge of a white
+     surface against a near-white page. */
+  --hairline: 1px solid var(--border);
+
+  /* The tab bar floats over the content, so it needs a lift the page does
+     not. Ink at 10%, same hue as `--shadow`. */
+  --shadow-raised: 0 -2px 12px rgb(16 36 58 / 8%);
+  --shadow-float: 0 4px 20px rgb(16 36 58 / 14%);
+
+  /* ---------------------------------------------------------------------
+     Shell metrics.
+     ---------------------------------------------------------------------
+     Tab bar: the iOS bar measures 135px tall at 1.628 px/pt = 83pt, of
+     which the home indicator's safe area is the bottom 34pt, leaving a
+     49-56pt control band. Icons measure 39px/1.628 = 24pt square, with
+     4-5pt between icon and label. */
+  --tabbar-height: 3.5rem;
+  --tabbar-icon: 1.5rem;
+  --tabbar-inset: calc(var(--tabbar-height) + env(safe-area-inset-bottom, 0px));
+
+  /* Desktop: the tab bar becomes a left rail and the content stops
+     growing, so a 1440px window is an application and not a phone
+     stranded in the middle of one. */
+  --rail-width: 14rem;
+  --content-max: 68rem;
+}
+
+/* ---------------------------------------------------------------------
+   Piece 2 additions: the stat primitives and the chart geometry.
+   ---------------------------------------------------------------------
+   Measured on `.claude/design-bar/strava/you-tab-weekly-stats-streak-
+   calendar.png` (393 pt wide at 1.628 px/pt) and
+   `you-tab-weekly-stats-and-12-week-chart.jpg`, with the same cap-height
+   method piece 1 used. */
+:root {
+  /* The vertical rhythm of a label-over-value stat, which the reference
+     runs in exactly two steps and nothing else.
+
+     Label baseline 91 px, value cap top 108 px: a 17 px gap, 10.4 pt. That
+     is the whole distance between a stat's name and its number, and it is
+     the same everywhere in the six screenshots. Rounded onto the 4 px
+     grid it is 8 px, which at our 12 px label and 18 px value renders the
+     same optical gap.
+
+     Between one block and the next the reference runs 23-28 pt: section
+     title baseline 44 to label baseline 91 is 47 px = 28.9 pt, and value
+     baseline 128 to the chart's caption 56 px = 34.4 pt. `--space-6` and
+     `--space-8` are the two rungs that covers. */
+  --stat-gap: var(--space-2);
+
+  /* A stat's own label is 11.4 pt and its value 17.5 pt in the reference,
+     which is `--text-label` over `--text-stat`. Both are already tokens;
+     what is new is that the *unit* shares the value's size and weight.
+     Measured three times, on two different phones:
+       a km value  digit cap 40 px, k ascender 40 px, m x-height 29 px
+       a mi value  digit cap 20 px, m x-height 15 px
+       a km value  digit cap and k ascender equal
+     29/40 and 15/20 are both 0.725, which is this face's own x-height to
+     cap ratio - so the unit is set at the value's size, at the value's
+     weight, in the value's colour, after one ordinary word space. It is
+     a token rather than a literal only so a later screen that genuinely
+     needs to subordinate a unit has one place to do it. */
+  --stat-unit-size: 1em;
+  --stat-unit-weight: var(--weight-bold);
+
+  /* Full-bleed, in a view that is inside the shell's own gutter. The
+     reference splits its two sections with a rule that runs edge to edge
+     (measured at x 5 and x 635 of a 640 px shot, so both margins), and a
+     rule that stops at the gutter reads as a box lid rather than as a
+     break. `--gutter` is the shell's horizontal padding at both
+     breakpoints, so this is exactly what cancels it. */
+  --bleed: calc(-1 * var(--gutter));
+
+  /* Chart geometry.
+
+     Plot height in the reference is 153 px between the top rule and the
+     zero axis, 94 pt, which is 24% of the 393 pt screen width. At our
+     412 px judging width that is 98 px, plus about 20 px of month labels.
+
+     We do not take that literally, for one reason: the reference draws a
+     smoothed area whose shape survives being 98 px tall, while twelve
+     bars carrying individually readable heights do not. `--chart-height`
+     is 11rem, which is 176 px including the axis, and `--chart-strip`
+     7rem for the full-history series, where 148 bars are a texture rather
+     than twelve readable quantities. The two differing is the point: the
+     old screen drew both at 240 px, which said they were equally
+     important, and they are not. */
+  --chart-height: 11rem;
+  --chart-strip: 7rem;
+
+  /* The trend charts' own height, and the one place this scale is not the
+     Overview's.
+
+     `--chart-height` is sized for twelve bars whose individual heights are
+     the reading. A trend chart carries 200-odd per-run marks over three
+     years, and its reading is where the mass of them sits, so its problem
+     is the opposite one: measured down the heart rate plot at 11rem, 82.3%
+     of the ink fell in the middle 40% of the height while the top 30% held
+     a single outlier, which renders as a haze rather than as a band.
+
+     The y range may not be clamped to cut that outlier out - deciding which
+     observations are exceptional is the analysis layer's call, the same one
+     `is_record` and `is_eligible` belong to it for - so the honest lever is
+     pixels. At 14rem the band holding four fifths of the marks gets 27%
+     more of them. Separate from `--chart-height` rather than a change to
+     it, because the Overview's bars were measured down to 11rem for a
+     reason and must not follow this. */
+  --chart-trend-height: 14rem;
+
+  /* The extra room a trend chart takes when it carries a second band for its
+     raw inputs - see `SUBJECT_BAND` in `charts/TrendChart.tsx` for when that
+     happens and why.
+
+     Added to whatever height the caller asked for rather than replacing it,
+     so the subject keeps the height it was sized for and the strip is not
+     taken out of it. 6.5rem gives the strip 83 CSS px of its own at the
+     standard height: a critic measured the first attempt at 27 px and read
+     it as "not a chart yet", and 80 px is the floor they named. */
+  --chart-trend-strip: 6.5rem;
+
+  /* The progression scatter, which is taller again and for a different
+     reason: it is not a series but a cloud, and the band it has to separate
+     its points in is brutally uneven. Measured on the real 5 km history -
+     225 efforts - the middle half of the 155 eligible efforts spans 6.7%
+     of the axis, and the 5th to 95th percentile 22%. The axis stays
+     one continuous linear scale (see `docs/reference/frontend.md`), so
+     pixels are the only honest lever on that squeeze: at 20rem the
+     percentile band gets 57px where 15rem gave it 40.
+
+     Its own token rather than a shared one, for the reason
+     `--chart-trend-height` is: the Overview's chart is a different object
+     and must not be dragged taller by this one. */
+  --chart-progression-height: 20rem;
+
+  /* The y-axis label column, on the right the way the reference has it -
+     its top tick label ends at x 600 of a 640 px shot whose right gutter is at 601,
+     so the labels' right edge *is* the page gutter and the plot's left
+     edge is the page gutter on the other side. Wide enough for the
+     longest tick this chart emits, `50 km`, at `--text-caption` plus the
+     gap: the widest tick this chart emits, "60 km", measures 90 device px
+     at 3x and the axis gap another 18, so 36 CSS px is the requirement and
+     40 is that with a step of slack for a three-digit kilometre. Kept in
+     step with `Y_AXIS_SIZE_PX` in `charts/VolumeBars.tsx`, which is what
+     uPlot actually sizes its canvas from. */
+  --chart-axis-gutter: 2.5rem;
+}
+
+/* The shell pads its main column by `--gutter` at phone width and by
+   `--space-8` above 60rem. Restating the second here keeps `--gutter` the
+   true name for "the page's horizontal inset" at every width, which is
+   what `--bleed` has to cancel and what every chart aligns to. */
+@media (min-width: 60rem) {
+  :root {
+    --gutter: var(--space-8);
+    /* A desktop column is three times the width, so the same plot is three
+       times flatter; the cloud needs the height back to stay a cloud. */
+    --chart-progression-height: 26rem;
+  }
+}

@@ -1,0 +1,84 @@
+.section {
+  /* The whole reason this is not a card: a section owns no surface, no
+     border and no padding. It is a title, an optional note and whatever
+     the view puts under them. */
+  min-width: 0;
+}
+
+.title {
+  /* `h2` already carries `--text-heading` and `--weight-bold` from
+     `theme/global.css`; only the space beneath it is this component's. */
+  margin: 0 0 var(--space-4);
+}
+
+/* The title and its `aside`, on one baseline at either end of the line:
+   `StreamPanel.module.css`'s heading row. The row takes the title's own
+   margin so a note under it sits as it does under a bare title. */
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-4);
+  margin: 0 0 var(--space-4);
+}
+
+.head > .title {
+  margin: 0;
+}
+
+/*
+ * Sits between the title and the content, so the title's own bottom margin
+ * would double up with it.
+ */
+.title + .note,
+.head + .note {
+  margin-top: calc(var(--space-4) * -1 + var(--space-1));
+}
+
+.note {
+  margin: 0 0 var(--space-4);
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  line-height: var(--leading-body);
+}
+
+/*
+ * The full-bleed rule, drawn as a pseudo-element rather than as this
+ * element's own `border-top`.
+ *
+ * A border would have to be paired with negative horizontal margins to
+ * escape the shell's gutter, and those margins would then apply to every
+ * child as well, so each one would need the gutter added back. An
+ * absolutely positioned line reaches past the gutter on its own and costs
+ * the layout nothing.
+ *
+ * `--bleed` is exactly the negation of `--gutter`, which is the shell's
+ * horizontal padding at both breakpoints - see `theme/tokens.css`.
+ */
+/*
+ * The reference is not symmetric about its rule and neither is this: about
+ * 15 pt of air above it and 29 pt below, measured between the last thing
+ * of one section and the first thing of the next. The rule belongs to the
+ * section under it, so it sits closer to the block it opens.
+ *
+ * The negative top margin eats half of the parent's own `--space-8` gap,
+ * which leaves 16px above the rule and 32px below - the measured ratio, on
+ * the 4px grid, without the parent having to know which of its children
+ * are divided.
+ */
+.divided {
+  position: relative;
+  margin-top: calc(-1 * var(--space-4));
+  padding-top: var(--space-8);
+}
+
+.divided::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: var(--bleed);
+  left: var(--bleed);
+  height: 1px;
+  background: var(--border);
+}

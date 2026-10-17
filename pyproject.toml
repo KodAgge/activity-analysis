@@ -1,0 +1,104 @@
+[project]
+name = "activity-analysis"
+version = "0.1.0"
+description = "Advanced training analysis for runners"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "KodAgge" }]
+keywords = [
+    "running",
+    "training",
+    "fitness",
+    "garmin",
+    "strava",
+    "fit",
+    "gpx",
+    "heart-rate",
+    "cadence",
+    "race-prediction",
+]
+# No "License ::" classifier: PEP 639 forbids one beside an SPDX `license`.
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Framework :: FastAPI",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fitdecode>=0.10.0",
+    "pandas>=2.2",
+    "pyarrow>=16.0",
+    "duckdb>=1.0",
+    "typer>=0.12",
+    "fastapi>=0.141.1",
+    "uvicorn>=0.52.4",
+    "shapely>=2.1.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/KodAgge/activity-analysis"
+Repository = "https://github.com/KodAgge/activity-analysis"
+Issues = "https://github.com/KodAgge/activity-analysis/issues"
+
+[project.scripts]
+activity-analysis = "activity_analysis.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pandas-stubs",
+    "httpx2>=2.12.0",
+    "types-shapely>=2.1.0.20260728",
+]
+
+[build-system]
+# 1.27 is the first hatchling whose default core metadata, 2.4, carries PEP 639's
+# License-Expression and License-File for the SPDX `license` and `license-files` above.
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/activity_analysis"]
+
+# The Python package and the built frontend, which the hook below adds as
+# web/dist. Not the frontend's sources, the fixtures or the docs: a wheel built
+# from this sdist needs only the build.
+[tool.hatch.build.targets.sdist]
+only-include = ["src", "hatch_build.py", "README.md"]
+
+# hatch_build.py: builds web/ into the package.
+[tool.hatch.build.hooks.custom]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+# Prose lives in docs/; ruff would otherwise reformat the Python blocks inside the plans.
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["activity_analysis"]
+strict = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["fitdecode.*", "duckdb.*", "pyarrow.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

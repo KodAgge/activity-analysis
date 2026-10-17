@@ -1,0 +1,182 @@
+/*
+ * See `Stat.tsx` for what was measured off the reference screenshots and
+ * where. Everything here is a token; a one-off size in this file would be
+ * the thing the type scale exists to remove.
+ */
+
+.group {
+  display: grid;
+  /*
+   * Six tracks, so a row can be thirds, two-thirds-and-a-third, or halves
+   * and still run gutter to gutter. See `Stat.tsx` for why a fixed
+   * three-wide grid could not, and why a group should build its rows out
+   * of thirds rather than mixing thirds with halves.
+   *
+   * Not `auto-fit`/`minmax`: that makes the column count a function of the
+   * container's width, so the same five stats sat three across on one
+   * screen and two across on the next, and neither matched the reference's
+   * own count.
+   *
+   * The row gap is the whole gap between two rows here, because a group
+   * with no caption anywhere reserves no caption line (see `.reserved`).
+   * 16px measures about 24px of ink between a value and the label under
+   * it, against the 21.7dp the reference runs between its own two stat
+   * rows (`activity-detail-map-hero-and-sheet.jpg`, value ink ending at
+   * y 1926 and the next label starting at 1991, at 3x on a 360dp phone).
+   * That figure is the activity feed card's, measured there first and true
+   * of the detail screen's grid for the same reason: same component, same
+   * two rows, same absence of captions.
+   */
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+}
+
+/*
+ * A group in which at least one stat carries a caption, which `StatGroup`
+ * decides from its own children - see `Stat.tsx`.
+ *
+ * Its rows are 21px taller, because every stat in it holds the caption
+ * line open (`.reserved`), so the gap between them comes back down to 8px:
+ * the two together put about 44px between one row's value baseline and the
+ * next row's label baseline, against the 34pt - about 36px at our width -
+ * the reference runs between blocks.
+ */
+.captioned {
+  row-gap: var(--space-2);
+}
+
+.third {
+  grid-column: span 2;
+}
+
+/* Two of the three columns, gap included, so a `two-thirds` beside a
+   `third` puts both rows' cells on the same column edges. */
+.twoThirds {
+  grid-column: span 4;
+}
+
+.half {
+  grid-column: span 3;
+}
+
+.full {
+  grid-column: 1 / -1;
+}
+
+/*
+ * Deliberately no fill, no border, no radius and no horizontal padding.
+ * The stat is text on the page. See `Stat.tsx`.
+ */
+.stat {
+  min-width: 0;
+}
+
+/*
+ * The caption's height, held open on a stat that has no caption *in a
+ * group where something else does*, so every stat in a row is the same
+ * object.
+ *
+ * Two neighbouring cells coming out different heights - one with a caption
+ * and one without - was named by both round-1 critics. The reservation is
+ * padding on the wrapper rather than an empty `<dd>`: an empty description
+ * is a real thing in the accessibility tree, and this is a layout concern.
+ *
+ * It is conditional on the group, not on the stat, because a group where
+ * no stat has a caption has no ragged row to prevent and reserving there
+ * is pure dead air: on the activity detail screen at 412px it made the row
+ * pitch 71.9px against a reference 56, and left 21px of nothing above the
+ * rule under the last row. `StatGroup` decides; no caller passes a flag,
+ * because a caller who forgot one would get exactly the raggedness this
+ * exists to remove.
+ *
+ * It is `.detail`'s own line box plus its top margin, restated from the
+ * same tokens so the two cannot drift - `--text-label` here because that
+ * is what `.detail` is set at.
+ */
+.reserved {
+  padding-bottom: calc(var(--space-1) + var(--text-label) * var(--leading-body));
+}
+
+.label {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  /*
+   * Medium, where the reference's own labels measure 400.
+   *
+   * A deliberate deviation, and the reason is that our stats carry a
+   * caption and the reference's never do: at 400 dim grey above the value
+   * and 400 dim grey below it, the two read as the same object on opposite
+   * sides of the number, which both round-1 critics said in the same
+   * words. The palette has one dim ink and fading it would fail contrast,
+   * and 11px is this project's type floor - which is also why label and
+   * caption now share a size (see `.detail`) - so weight is the axis
+   * left: 500 above, 700 for the value, 400 below.
+   */
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+}
+
+/*
+ * The one measured step between a stat's name and its number: 10.4 pt in
+ * the reference, `--stat-gap` here. Nothing else separates them.
+ */
+.value {
+  margin: var(--stat-gap) 0 0;
+  color: var(--ink);
+  font-size: var(--text-stat);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  /* Not `tabular-nums`. A stat value is a single headline number, not a
+     column, and tabular figures buy alignment at the cost of fitting -
+     which is the wrong trade when nothing is being aligned. The `.mono`
+     class in global.css is still right for a column of times. */
+  font-variant-numeric: proportional-nums;
+  letter-spacing: -0.01em;
+}
+
+.number {
+  /* Nothing of its own: it exists so the unit beside it can differ, and so
+     a value can be styled without the unit inheriting it. */
+  white-space: nowrap;
+}
+
+/*
+ * At `1em` and `--weight-bold` this is the same size and weight as the
+ * number in front of it, which is what the reference does - see the
+ * measurements in `Stat.tsx`. The tokens are the seam for a screen that
+ * has to differ.
+ */
+.unit {
+  font-size: var(--stat-unit-size);
+  font-weight: var(--stat-unit-weight);
+  white-space: nowrap;
+}
+
+/*
+ * The caption: `--text-label`, the same size as the label above the value,
+ * at `--weight-regular`.
+ *
+ * Same size on purpose. At `--text-caption` it was one pixel of cap height
+ * off the label - "cap-height 9 against a cap-height 10 label, which is a
+ * wobble rather than a step" (round-3 critic) - and a step that small is
+ * read as a misalignment rather than as a level. The rungs below 12px are
+ * spoken for: 11px is this project's measured type floor, so there is no
+ * real step to take, and the honest move is to stop implying one. The
+ * three tiers of a stat are then value 18/700 ink, label 12/500 dim,
+ * caption 12/400 dim - one axis, moving one way, twice.
+ *
+ * `balance` splits a caption that does wrap across its lines evenly rather
+ * than orphaning its last word. Nothing in the rail wraps at the shares it
+ * uses (checked at 412px: "through 10 November 2025" in a two-thirds cell,
+ * "weeks with a run" in a third); this is the guard for the next group.
+ */
+.detail {
+  margin: var(--space-1) 0 0;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-body);
+  text-wrap: balance;
+}

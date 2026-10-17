@@ -1,0 +1,200 @@
+.splits {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/*
+ * The two tabs, and the rule under them.
+ *
+ * The rule runs past both gutters, like every other rule on these screens -
+ * see `Section.module.css` for why a line that stops at the gutter reads as
+ * the lid of a box rather than as a break. The tabs themselves start at the
+ * gutter, so the first one's ink lines up with the heading above it, which
+ * is what the `padding-inline` of zero on the leading tab is for.
+ */
+.tabs {
+  position: relative;
+  display: flex;
+  gap: var(--space-6);
+}
+
+.tabs::after {
+  content: '';
+  position: absolute;
+  right: var(--bleed);
+  bottom: 0;
+  left: var(--bleed);
+  height: 1px;
+  background: var(--border);
+}
+
+.tab,
+.tabActive {
+  position: relative;
+  z-index: 1;
+  padding: 0 0 var(--space-2);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: var(--text-small);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+
+.tabActive {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+
+/*
+ * Eight columns of a split row do not fit a 412px phone and never will, so
+ * this scrolls sideways - and it scrolls *full bleed*, from one screen edge
+ * to the other. Inside the gutter, the cut column landed 24px short of the
+ * edge and read as content clipped by a box; at the screen edge it reads as
+ * a strip that carries on, which is what it is.
+ *
+ * The gutter is given back as padding on the first and last cells rather
+ * than as padding on this scroll container. Padding on the trailing edge of
+ * a scroll container is not reliably part of the scrollable area, while a
+ * cell's own padding is part of the table's width by construction - so the
+ * last column ends a full gutter short of the edge when scrolled to the end,
+ * on every engine. It also puts the row rules edge to edge, which is where
+ * every other rule on these screens runs.
+ *
+ * `position: relative` is load-bearing, not decoration: it makes this the
+ * containing block for the absolutely positioned `.srOnly` header below.
+ * Without it that span's containing block is the initial one, so it is
+ * laid out at its static position inside the wide table - past x=428 on a
+ * 390px viewport - and joins the *document's* scrollable overflow instead
+ * of this wrapper's. `clip` hides its ink and not its box, so the whole
+ * page slid 39px sideways with nothing visible out there. The overflow
+ * below only scrolls boxes whose containing block is this element.
+ */
+.tableWrap {
+  position: relative;
+  margin-inline: var(--bleed);
+  overflow-x: auto;
+}
+
+/*
+ * No fill and no border. The reference draws a list as rows on the page,
+ * separated by whitespace and a hairline, never as a panel inside a box -
+ * see `components/Section.tsx` for the luminance scan behind that.
+ */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  border-bottom: 1px solid var(--grid);
+  white-space: nowrap;
+}
+
+.table th:first-child,
+.table td:first-child {
+  padding-left: var(--gutter);
+}
+
+.table th:last-child,
+.table td:last-child {
+  padding-right: var(--gutter);
+}
+
+.table th {
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.table td {
+  font-size: var(--text-small);
+}
+
+/* A rep reads as the session's structure; a recovery is muted rather than
+   hidden, and a plain lap (no signal either way) gets neither treatment. */
+.rep {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  font-weight: 600;
+}
+
+.recovery {
+  color: var(--ink-dim);
+  font-style: italic;
+}
+
+.plain {
+  color: var(--ink);
+}
+
+.partialTag {
+  margin-left: var(--space-2);
+  padding: 0.05rem var(--space-2);
+  border-radius: var(--radius-pill);
+  border: var(--hairline);
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  font-style: normal;
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* The pace bar: width alone
+   carries the pace shape a vertical-bar chart would otherwise need a whole
+   axis for.
+
+   It lives in its own cell now. Sharing the pace number's cell meant the
+   fastest split's bar - 100% of its container by construction - pushed
+   that number out of the cell and onto the heart-rate column, under the
+   `white-space: nowrap` above. The track gives the bar a container of its
+   own to be a percentage of. */
+/* A stated width, because the cell has no text to size itself from: in an
+   auto-layout table the bar column would otherwise collapse to its
+   minimum and the whole comparison would happen across 40-odd pixels. */
+.track {
+  display: block;
+  width: 100%;
+  min-width: 6rem;
+  height: 0.5rem;
+  background: var(--grid);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.bullet {
+  display: block;
+  height: 100%;
+  background: var(--series-1);
+  border-radius: var(--radius-pill);
+}
+
+/* Numbers right-align so a column of them can be compared down the page,
+   which is the whole point of the tabular figures the `mono` class already
+   applies. The header aligns with its column. */
+.table td.numeric,
+.table th.numericHeader {
+  text-align: right;
+}
+
+/* Visible to assistive technology only: the header of the bar column,
+   which names something a sighted reader sees directly. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

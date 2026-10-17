@@ -1,0 +1,140 @@
+/* One column at both widths: the total, its growth line, the counts. */
+.readout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.total {
+  margin: 0;
+}
+
+/* The eyebrow, the Progression view's `.bestLabel`: caption size, bold,
+   tracked capitals in `--ink-dim`. The desktop's growth chart under the
+   map composes it for its own label. */
+.totalLabel {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* The value, and on a phone the spark in the room it leaves on its line:
+   the spark's foot sits on the number's baseline, the zero of its own
+   scale on the line the digits stand on. */
+.totalValue {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-4);
+  margin: var(--stat-gap) 0 0;
+  color: var(--ink);
+  font-size: var(--text-display);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  letter-spacing: -0.01em;
+  font-variant-numeric: proportional-nums;
+}
+
+.figureLine,
+.number,
+.unit {
+  white-space: nowrap;
+}
+
+/* The unit at the value's size and weight, the rule `Stat` follows. */
+.unit {
+  font-size: var(--stat-unit-size);
+  font-weight: var(--stat-unit-weight);
+}
+
+/* How the total grew, at the Progression best's `.bestDetail` size and
+   colour: one dim sentence at label size, its figures in ink. */
+.gain {
+  margin: var(--space-2) 0 0;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  line-height: var(--leading-body);
+  text-wrap: pretty;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.gainFigure {
+  white-space: nowrap;
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}
+
+/*
+ * The spark: as tall as the digits' cap height, so it reads as part of
+ * the figure rather than as a chart of its own, and as wide as the line
+ * leaves, up to a width at which three years of steps still read as
+ * steps. The 0.12em lift puts its foot on the baseline rather than on the
+ * line box's bottom edge, where the descender room is.
+ */
+.spark {
+  position: relative;
+  flex: 0 1 9rem;
+  min-width: 4rem;
+  height: 0.7em;
+  margin-bottom: 0.14em;
+  margin-left: auto;
+}
+
+.sparkSvg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.sparkFill {
+  fill: var(--series-1);
+  fill-opacity: 0.1;
+}
+
+.sparkLine {
+  fill: none;
+  stroke: var(--series-1);
+  stroke-width: 2px;
+  stroke-linejoin: round;
+}
+
+/* The full chart's end dot: 4 px in the line's colour, a 2 px ring of the
+   page. The series only rises, so its end is the box's top right. */
+.sparkEnd {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--series-1);
+  box-shadow: 0 0 0 2px var(--page);
+  transform: translate(50%, -50%);
+}
+
+/* The rules behind the total, `views/Progression.module.css`'s disclosure,
+   composed so the two cannot drift. */
+.footnote {
+  composes: footnote from '../views/Progression.module.css';
+}
+
+.footnoteSummary {
+  composes: footnoteSummary from '../views/Progression.module.css';
+}
+
+.footnoteBody {
+  composes: footnoteBody from '../views/Progression.module.css';
+}
+
+/* In the readout's own column the disclosure follows the counts at the
+   column's gap, not the Progression chart's extra margin. */
+.readout > .footnote {
+  margin-top: calc(-1 * var(--space-2));
+}

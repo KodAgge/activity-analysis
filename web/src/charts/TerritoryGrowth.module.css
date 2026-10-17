@@ -1,0 +1,34 @@
+/* The panel, sized from outside like every uPlot chart here: its height is
+   `--chart-height`, which `HEIGHT_PX` in `TerritoryGrowth.tsx` mirrors. */
+.chart {
+  position: relative;
+  width: 100%;
+  height: var(--chart-height);
+}
+
+/* The hover readout, `VolumeBars.module.css`'s own, composed so the two
+   cannot drift. */
+.readout {
+  composes: readout from './VolumeBars.module.css';
+}
+
+.readoutWhen {
+  composes: readoutWhen from './VolumeBars.module.css';
+}
+
+.readoutRow {
+  composes: readoutRow from './VolumeBars.module.css';
+}
+
+/* At the foot of the plot, just above the date axis, for a hovered total
+   in the upper half of the scale: see `Hover.high` in `TerritoryGrowth.tsx`.
+   22px is `X_AXIS_SIZE_PX`, the axis band the readout must not cover. */
+.readoutLow {
+  top: auto;
+  bottom: calc(22px + var(--space-2));
+}
+
+/* A click on the plot opens the hovered run's place on the map. */
+.choosing {
+  cursor: pointer;
+}

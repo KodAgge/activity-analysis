@@ -1,0 +1,144 @@
+/*
+ * The map panel. The underlay's `Route` sizes it; the map and every
+ * control sit on top, inset by the hero's own gutter.
+ */
+.wrap {
+  position: relative;
+  /* The same inset `Route.module.css` sets, read by `ScaleBar` and the
+     switch below. */
+  --route-inset: var(--hero-inset, 1rem);
+  /*
+   * Inside a height cap the panel keeps its ratio and narrows, centred,
+   * rather than being cropped: `--hero-max-height` is the activity view's
+   * pinned desktop hero's (`views/ActivityDetail.module.css`), and
+   * `--route-ratio` this panel's own width over height, set inline beside
+   * its `aspect-ratio`. `Route.module.css`'s `.wrap` carries the same rule,
+   * for the bare trace.
+   *
+   * No fallback for `--hero-max-height`, deliberately. Where nothing sets
+   * it - the route view, a phone, a route drawn outside a hero - the
+   * declaration is invalid at computed-value time and `width` is `auto`,
+   * the full width it always had. A `100vh` fallback would cap the route
+   * view's hero too, on a window shorter than the hero is tall.
+   */
+  width: min(100%, calc(var(--hero-max-height) * var(--route-ratio)));
+  margin-inline: auto;
+}
+
+.underlay {
+  width: 100%;
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+}
+
+/* MapLibre's own stylesheet gives this element `position: relative` and
+   `overflow: hidden`; it only has to fill the box above. */
+.canvas {
+  width: 100%;
+  height: 100%;
+}
+
+/* The replay's growing line - see `ReplayCanvas`. Placed by `RouteMap`
+   inside MapLibre's canvas container, over the map's own canvas; its
+   drawing buffer is sized at the device pixel ratio, and this sizes its box
+   to the panel. Its own layer, so a frame's strokes repaint nothing else. */
+.replayCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* The map's accessible name. An empty overlay rather than a role on
+   `.map`, because MapLibre's attribution control lives inside `.map` and an
+   image's children are presentational. It takes no clicks, so the
+   attribution under it stays usable. */
+.label {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/*
+ * Opposite the back control, which sits at top left on the same inset.
+ *
+ * The activity view's phone hero scales this whole panel as it collapses
+ * (`components/RouteHero.module.css`'s `.picture`, by `--hero-scale`, about
+ * its top centre). The switch cancels that scale: it is placed and scaled
+ * by the inverse so that it lands full size on the hero's own top-right
+ * inset at every step of the collapse. The back control, the pace legend
+ * under the switch and the moment label belong to the hero and are never
+ * scaled, and the label's offset is tuned to a full-size switch in that
+ * corner. Scaled with the map, the switch moved in from the corner and
+ * the label ran 2px into it at 390x844. With no `--hero-scale` these
+ * reduce to the plain inset.
+ */
+.switch {
+  position: absolute;
+  top: calc(var(--route-inset) / var(--hero-scale, 1));
+  right: calc(50% - (50% - var(--route-inset)) / var(--hero-scale, 1));
+  scale: calc(1 / var(--hero-scale, 1));
+  transform-origin: 100% 0;
+  z-index: 1;
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--raised);
+  box-shadow: var(--shadow-float);
+}
+
+.segment {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.segment input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.segment span {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+}
+
+.segment input:checked + span {
+  background: var(--ink);
+  color: var(--raised);
+}
+
+.segment input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+ * The moment's own marker element - see `RouteMap.tsx`. MapLibre positions
+ * a `Marker`'s element itself, so this only sets its own appearance: the
+ * same dot `Route.module.css`'s bare trace draws with an SVG `<circle>`,
+ * here a plain `<div>` because a `Marker` takes an arbitrary DOM element,
+ * not an SVG shape.
+ */
+.dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--raised);
+  border: 3px solid var(--ink);
+  pointer-events: none;
+}

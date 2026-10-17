@@ -1,0 +1,86 @@
+/*
+ * The route view: the activity view's shape - hero, title block, then the
+ * chart - with the chart's key and footnote borrowed from the progression
+ * view, whose chart this is.
+ *
+ * Every size here is a token, and every colour.
+ */
+
+/*
+ * The page, the hero's placement, the title block, the byline, the text
+ * link and the desktop split of hero left and title block right are the
+ * activity view's, composed rather than restated: `ActivityDetail.module.css`
+ * writes its rules against its own class names, which every element here
+ * carries too, so the two deep views cannot drift apart.
+ */
+.route {
+  composes: detail from './ActivityDetail.module.css';
+}
+
+.hero {
+  composes: hero from './ActivityDetail.module.css';
+}
+
+.header {
+  composes: header from './ActivityDetail.module.css';
+}
+
+.meta {
+  composes: meta from './ActivityDetail.module.css';
+}
+
+/* The link to the reference run, a second byline line like the activity
+   view's route line. */
+.metaLink {
+  composes: routeLine from './ActivityDetail.module.css';
+}
+
+.link {
+  composes: link from './ActivityDetail.module.css';
+}
+
+/* The unknown route's way back, a sentence rather than a control. */
+.back {
+  margin: 0;
+  font-size: var(--text-body);
+}
+
+/* The route section that stands in for a hero the reference run cannot
+   draw, ruled like every section after the first. */
+.section {
+  composes: section divided from './ActivityDetail.module.css';
+}
+
+/* The chart's key, the toggle and the footnote are the progression view's,
+   composed rather than restated so the two charts' furniture cannot drift. */
+.key {
+  composes: key from './Progression.module.css';
+}
+
+.legend {
+  composes: legend from './Progression.module.css';
+}
+
+.legendItem {
+  composes: legendItem from './Progression.module.css';
+}
+
+.toggle {
+  composes: toggle from './Progression.module.css';
+}
+
+.toggleInput {
+  composes: toggleInput from './Progression.module.css';
+}
+
+.footnote {
+  composes: footnote from './Progression.module.css';
+}
+
+.footnoteSummary {
+  composes: footnoteSummary from './Progression.module.css';
+}
+
+.footnoteBody {
+  composes: footnoteBody from './Progression.module.css';
+}

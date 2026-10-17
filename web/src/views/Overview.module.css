@@ -1,0 +1,49 @@
+/*
+ * The screen is a single column at the page gutter and nothing else: no
+ * card, no panel, no inner max-width. `AppShell.module.css` owns the
+ * gutter and `--content-max`; a second cap here would give the screen a
+ * right edge the chart below it does not share, which is the four-left-
+ * edges fault this view was rebuilt to remove.
+ *
+ * The gap is the block rhythm the reference runs between a stat row and
+ * the thing under it - 23 to 28 pt measured, `--space-8` here. A
+ * `Section` marked `divided` adds its own rule and padding on top of it.
+ */
+.overview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+/* The title and the stats it introduces, closer together than the screen's
+   own block rhythm - see the comment at the call site. */
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/*
+ * The empty store. No local `h1` rule: `theme/global.css` carries the
+ * measured title size, and the override this used to hold (`font-size:
+ * 1.2rem`) is exactly what `AppShell.module.css`'s `main.main h1`
+ * specificity hack exists to out-specify.
+ */
+.empty {
+  max-width: 32rem;
+  color: var(--ink-dim);
+}
+
+.empty p {
+  margin: var(--space-4) 0 0;
+}
+
+.empty pre {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--panel);
+  border: var(--hairline);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-small);
+  overflow-x: auto;
+}

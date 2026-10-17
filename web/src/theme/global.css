@@ -1,0 +1,137 @@
+/* Self-hosted, not pulled from Google Fonts at runtime: this application is
+   deliberately offline and private, and a remote font import is a network
+   dependency for the same reasons the basemap is self-hosted - it
+   silently falls back to the system stack offline, and reports every
+   session to a third party online. Both families are OFL licensed; see the
+   accompanying OFL-*.txt files in ./fonts. */
+
+@font-face {
+  font-family: 'Schibsted Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/schibsted-grotesk-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Schibsted Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./fonts/schibsted-grotesk-500.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Schibsted Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./fonts/schibsted-grotesk-600.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Schibsted Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./fonts/schibsted-grotesk-700.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono-500.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono-600.woff2') format('woff2');
+}
+
+/* Nordic Daylight. Light mode only: dark mode is not built yet, needs its
+   own separately validated palette, and must never be derived by inverting
+   this one. No prefers-color-scheme block on purpose. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--page);
+  color: var(--ink);
+  font-family: 'Schibsted Grotesk', system-ui, sans-serif;
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  /* A measured type scale is worth nothing if the browser then inflates it
+     on its own, which mobile WebKit and Chrome do to a wide text block in
+     landscape. */
+  -webkit-text-size-adjust: 100%;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Headings carry the measured scale by default, so a view that just writes
+   `<h1>Records</h1>` is already right. `AppShell.module.css` restates the
+   `h1` rule at a specificity that beats a view's own `.records h1`, for the
+   reason documented there - the view rules are being deleted one view at a
+   time and this file cannot reach past them meanwhile. */
+/*
+ * No bottom margin, here or anywhere: every view is a flex column with a gap
+ * of its own, and a margin on top of that gap put 52 px between the title and
+ * the first thing under it, where the reference's activity-detail header
+ * measures 19 dp from the title's baseline to the label below it.
+ *
+ * This rule used to be restated as `main.main h1` in `AppShell.module.css`,
+ * because five views still carried their own `font-size: 1.2rem` from before
+ * the type scale existed and a bare `h1` selector loses to every one of them.
+ * Those are all gone, so the specificity hack went with them, as its own
+ * comment said it should.
+ */
+h1 {
+  margin: 0;
+  font-size: var(--text-title);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  margin: 0;
+  font-size: var(--text-heading);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+}
+
+h3 {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+}
+
+/* For anything numeric that stacks in a column: heart rate, pace, counts. */
+.mono {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}

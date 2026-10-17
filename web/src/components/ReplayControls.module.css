@@ -1,0 +1,101 @@
+/*
+ * A bottom corner of the route hero, raised by 2rem: above MapLibre's
+ * compact attribution button on the right and above the scale bar on the
+ * left. The same height over the bare trace, which has no attribution, so
+ * the controls do not jump when the map finishes loading. Which corner is
+ * `ReplayControls`' `side`.
+ *
+ * `--hero-inset` rather than `--route-inset`: this is a child of the hero,
+ * beside the picture rather than inside it, and `--route-inset` exists
+ * only inside the picture's own `.wrap` - see `RouteHero.module.css`'s
+ * `.momentLabel`.
+ */
+.controls {
+  position: absolute;
+  bottom: calc(var(--hero-inset) + 2rem);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.right {
+  right: var(--hero-inset);
+}
+
+.left {
+  left: var(--hero-inset);
+}
+
+/* A pill on the surface every other floating control on the hero wears. */
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--raised);
+  box-shadow: var(--shadow-float);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  cursor: pointer;
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.icon {
+  width: 0.75rem;
+  height: 0.75rem;
+  fill: currentColor;
+}
+
+/* The speed switch: copied from `RouteMap.module.css`'s map style switch,
+   which is in the lazy map chunk and so cannot be composed from here. */
+.switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--raised);
+  box-shadow: var(--shadow-float);
+}
+
+.segment {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.segment input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.segment span {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+}
+
+.segment input:checked + span {
+  background: var(--ink);
+  color: var(--raised);
+}
+
+.segment input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

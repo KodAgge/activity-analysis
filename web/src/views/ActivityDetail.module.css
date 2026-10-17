@@ -1,0 +1,468 @@
+/*
+ * The activity detail screen. The route view composes its layout from the
+ * classes here - the page, the hero's placement, the title block, the
+ * byline, the text link and the desktop grid - so the two deep views share
+ * one shape by construction.
+ *
+ * Measured off `.claude/design-bar/strava/activity-detail-*`, all three of
+ * them, calibrated first: the two Android shots are 1080 px wide with a
+ * 72 px content gutter, so 3 px/dp on a 360 dp phone, and the iOS stat grid
+ * is 825 px at 402 pt, so 2.052 px/pt. Numbers quoted below are in those
+ * device units with the dp/pt figure beside them.
+ *
+ * Every size here is a token. A one-off `font-size` in this file is the
+ * thing the type scale exists to remove.
+ */
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  /* `.divided` below eats half of this gap back, which is what puts 16px
+     above a section rule and 32px below it - the reference's own ratio.
+     See `components/Section.module.css`, which this mirrors. */
+  gap: var(--space-8);
+}
+
+/* ---------------------------------------------------------------------
+   The route hero
+   ---------------------------------------------------------------------
+   `activity-detail-map-hero-and-sheet.jpg` opens on the map, edge to edge,
+   with the sheet's top at y 1083 of a 2112 px crop - 361 dp of hero on a
+   360 dp phone, so the hero is about as tall as the screen is wide.
+
+   Ours does not take that as a fixed ratio, and must not: `Route.tsx` sets
+   its own `aspect-ratio` from the trace's bounding box, clamped between
+   square and 1.8:1, because pinning a ratio is exactly what letterboxed
+   the trace before (1024x600 rendered, trace 440x517, 584 px unused). A
+   route taller than it is wide therefore lands on the clamp's square floor
+   and renders at 412x412 at judging width - which is the reference's hero,
+   arrived at from the data rather than imposed on it.
+
+   Full bleed, like the reference's map, which is the one element on these
+   screens that ignores the gutter. */
+/*
+ * Where the hero sits on this screen. Its surface - the `--raised` band,
+ * `--hero-inset`, the loading placeholder and the hidden heading - is
+ * `components/RouteHero.module.css`'s, shared with the route view.
+ */
+.hero {
+  margin-inline: var(--bleed);
+  /* Closes the parent's 32px gap to 20px: this is a byline under a picture,
+     not two sections of a document. */
+  margin-bottom: calc(-1 * var(--space-3));
+}
+
+/*
+ * The hero reaches the top of the scroll, which is what `--bleed` does for
+ * it horizontally.
+ *
+ * A blind critic named the 20px strip of page colour above it as the one
+ * thing on this screen that read as a web page rather than an app: a hero
+ * that neither bleeds to the top nor is inset at the sides is neither
+ * thing.
+ *
+ * The selector is the condition, not a guess. `AppShell` renders its
+ * notices and then its content wrapper as siblings inside `<main>`, so
+ * `main > *:first-child` is the notice when there is one and the content
+ * wrapper when there is not - and only the content wrapper contains a
+ * `.detail`. So this cancels the shell's top padding exactly when nothing
+ * is above the hero, and a stale store or an unreachable one keeps its
+ * warning visible with the hero below it.
+ *
+ * The `--space-5` is `AppShell.module.css`'s own `.main` padding-top at
+ * this breakpoint, restated because a view cannot read another module's
+ * literal. If that padding changes, this changes with it.
+ */
+main > *:first-child .detail > .hero:first-child {
+  margin-top: calc(-1 * var(--space-5));
+}
+
+/* The way back is `components/BackControl.module.css`'s, shared with the
+   route view, and floats on `RouteHero`'s own inset. */
+
+/* ---------------------------------------------------------------------
+   The title block
+   ---------------------------------------------------------------------
+   The reference reads title, byline, achievement, stats, in that order and
+   with no container around any of them. Ours is the same block: the day,
+   the time and place, the automatic badges, then the six numbers. */
+/*
+ * Stretched, not `align-items: flex-start`.
+ *
+ * The first version shrink-wrapped every child, which silently broke
+ * `StatGroup`'s own contract: it is a six-track grid precisely so three
+ * `third`s run from one page gutter to the other, and inside a
+ * flex-start column it collapsed to the width of its own text - three
+ * stats packed into the left 45% of a 1088px desktop with the rest empty.
+ * A view does not get to re-lay out a shared primitive by accident. The
+ * two children that genuinely are their own size say so themselves below.
+ */
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/*
+ * The byline. Measured on the sheet: the title's cap is 49 px and this
+ * line's is 25 px, a ratio of 0.51, which against our 26 px title is 13 px -
+ * `--text-small` is the rung that covers it.
+ *
+ * The negative margin closes the header's own 24px gap to 4px. A byline
+ * belongs to the line above it; 24px would read as a separate block.
+ */
+.meta {
+  margin: calc(var(--space-1) - var(--space-6)) 0 0;
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+  line-height: var(--leading-body);
+}
+
+/*
+ * The stat block's own step, closing the header's 24px gap up to 32px.
+ *
+ * Measured: the reference runs 27.8 pt from the bottom of the block above
+ * the stats to the first stat label's cap, which is 28.5 px at our judging
+ * width; 32 px is the rung of the 4 px grid nearest it.
+ *
+ * This used to leave the fault a critic found here only half closed, because
+ * the gap between the two stat *rows* was still the larger of the two. That
+ * gap was never this view's: 21.4 px of it was a caption line
+ * `Stat.module.css` reserved on every stat in a group where no stat has a
+ * caption. `StatGroup` now decides that at the group rather than per stat, so
+ * this screen's rows sit 16 px apart under a 32 px step, and the block groups
+ * the way this rule wanted. Re-measured after that fix: row pitch 58.5 px
+ * against the reference's 56.
+ */
+.header > dl {
+  margin-top: calc(var(--space-8) - var(--space-6));
+}
+
+/* The reference separates the two halves of its byline with a middle dot
+   and a space either side. `aria-hidden`, because a screen reader should
+   read "20:19, Jönköping, Sweden" and not the punctuation between them. */
+.metaDot {
+  margin: 0 0.4em;
+}
+
+/*
+ * The route line: a second quiet line under the byline, closing the
+ * header's 24px gap to 4px for the same reason the byline does.
+ */
+.routeLine {
+  margin: calc(var(--space-1) - var(--space-6)) 0 0;
+  font-size: var(--text-small);
+  line-height: var(--leading-body);
+}
+
+/*
+ * A text link: full ink and an underline, the affordance `AppShell`'s
+ * disclosure uses, rather than the accent, which on this screen marks a
+ * record.
+ */
+.link {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Closes the header gap to 12px: the badges qualify the title above them
+   rather than opening a block of their own. */
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: calc(var(--space-3) - var(--space-6)) 0 0;
+}
+
+.badge {
+  padding: 0.15rem var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  border: var(--hairline);
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Matches the browser's own record badge - see Activities.module.css,
+   including why the distance keys are not uppercased. */
+.badgePr {
+  background: var(--series-5);
+  border-color: var(--series-5);
+  color: var(--raised);
+  text-transform: none;
+  letter-spacing: 0.01em;
+}
+
+/* ---------------------------------------------------------------------
+   The analysis sections
+   --------------------------------------------------------------------- */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* The pace panel's note: why its line is not the header's Pace. */
+.paceNote {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+}
+
+/*
+ * The full-bleed rule that separates one section from the next, borrowed
+ * from `Section.module.css` rather than restated: `composes` gives this
+ * class that one's name as well, so there is one definition of the
+ * application's section rule and it cannot drift here.
+ *
+ * This view cannot use the `Section` *component* that owns it, because
+ * every section on this screen is a named region - the route, the zones,
+ * the four channels and the splits all carry `aria-labelledby` pointing at
+ * their own heading, and `Section` emits no such attribute. The rule is the
+ * part that is shared; the markup is not.
+ */
+.divided {
+  composes: divided from '../components/Section.module.css';
+}
+
+/*
+ * The pinned phone hero. Below 60rem the hero stays first and full width,
+ * and it sticks to the top of the window as the page scrolls, collapsing
+ * from its natural height - about 390px on a 390px-wide phone - to a third
+ * of the window, about 280px on an 844px one, the way an app's collapsing
+ * header does. Two charts fit under it at their full height, so a finger on
+ * a chart and the dot on the map are on screen together. Measured on a
+ * real loop run at 390x844 before this, the map ended at 450px and the
+ * pace chart started at 1194px. See ActivityDetail in docs/reference/frontend.md.
+ *
+ * `views/useHeroCollapse.ts` writes the three properties this reads, on
+ * the hero itself, as the page scrolls: `--hero-collapse` from 0 to 1, the
+ * natural height, and the collapsed height's share of it. The box's height
+ * follows them here and the picture inside is scaled to the same share by
+ * `--hero-scale` (`components/RouteHero.module.css`'s `.picture`), so the
+ * map's canvas is never resized per frame. Until the hook has measured,
+ * `height` is invalid at computed-value time and so `auto`, the natural
+ * height.
+ *
+ * `z-index` keeps it over the sections scrolling under it, some of which
+ * are positioned. `(width < 60rem)` is the exact complement of the desktop
+ * block's `(min-width: 60rem)`, which the hook reads as
+ * `useMediaQuery.ts`'s `DESKTOP_LAYOUT_QUERY`.
+ */
+@media (width < 60rem) {
+  /*
+   * The height the box loses it gives back below itself, so the page's own
+   * geometry never moves: everything under the hero stays where it was in
+   * the document, and scrolls at the reader's own speed. Since the box
+   * loses one pixel per pixel scrolled, the content's top edge stays on the
+   * hero's bottom edge until the collapse is done, and then passes under it.
+   *
+   * The first version let the page shorten instead, and it cost three
+   * things. The content moved at twice the scroll speed during the
+   * collapse. A jump - `scrollIntoView`, a focused control - was computed
+   * against the uncollapsed page and landed up to the collapse distance
+   * off, which put the heart rate chart's top 80px under the hero at
+   * 390x844. And Chrome's scroll anchoring answered each frame's shrink by
+   * scrolling back up, which grew the hero again: in 200 wheel steps of
+   * 10px the offset ran 51, 51, 51, 72, 61, 82, 71.
+   */
+  .pinned > .hero {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    --hero-scale: calc(1 - var(--hero-collapse) * (1 - var(--hero-collapsed-scale)));
+    height: calc(var(--hero-natural-height) * var(--hero-scale));
+    /* Fallbacks here, unlike `height`: an invalid margin would be 0, not
+       the phone hero's own `--space-3` pull-up above. */
+    margin-bottom: calc(
+      var(--hero-natural-height, 0px) * (1 - var(--hero-scale, 1)) - var(--space-3)
+    );
+  }
+
+  /*
+   * A jump to an element - `scrollIntoView`, a fragment link, a browser
+   * that scrolls a focused control to the top edge - stops below the
+   * pinned hero rather than under it (WCAG 2.4.11, focus not obscured).
+   * The collapsed height is enough: while the hero is still taller than
+   * that, the content under it sits at its bottom edge and is not covered.
+   * A third of `100dvh`, the viewport `useHeroCollapse.ts` reads as
+   * `innerHeight`, for its `COLLAPSED_VIEWPORT_SHARE`.
+   */
+  :global(html):has(.pinned > .hero) {
+    scroll-padding-top: calc(100dvh / 3);
+  }
+}
+
+/*
+ * The right-hand column of the desktop layout, which below 60rem is no box
+ * at all: its children lay out as the page's own, in `.detail`'s column
+ * with its gap, exactly as they would without it. See the desktop block.
+ */
+.besideHero {
+  display: contents;
+}
+
+@media (min-width: 60rem) {
+  /*
+   * Desktop is two columns: the hero on the left, pinned, and everything
+   * else scrolling past it on the right.
+   *
+   * The hero is pinned because the moment ties it to the charts: hovering a
+   * stream panel moves the dot on the map, and that is only worth anything
+   * while both are on screen. Measured on a real loop run at 1280x800
+   * before this layout, the map ended at 552 px and the pace chart started
+   * at 877 px, so the dot and the chart being hovered could share the
+   * screen for part of the pace chart and never for the other three. The
+   * maintainer chose this layout on 2026-09-28; see docs/reference/frontend.md,
+   * "Desktop layout".
+   *
+   * The route view composes these classes but not `.pinned`, so it keeps
+   * the earlier split: its hero on the left and its title block on the
+   * right in the first row, with every section below spanning both, and
+   * its hero scrolling away with the page.
+   */
+  .detail {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: var(--space-8);
+    align-items: start;
+  }
+
+  .detail > * {
+    grid-column: 1 / -1;
+  }
+
+  .hero {
+    grid-column: 1;
+    grid-row: 1;
+    margin-inline: 0;
+    margin-bottom: 0;
+    border-radius: var(--radius-card);
+  }
+
+  /* No top reclaim on desktop: the hero is a card in a column here, not a
+     full-bleed band, so it has a gutter on every other side and wants one
+     above too. */
+  main > *:first-child .detail > .hero:first-child {
+    margin-top: 0;
+  }
+
+  .header {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  /* No hero: the title block is the first thing on the page and takes the
+     whole width, rather than sitting in a right-hand column beside a gap. */
+  .header:first-child {
+    grid-column: 1 / -1;
+  }
+
+  /*
+   * The pinned hero. `sticky` holds it `--space-6` below the top of the
+   * window for as long as its grid area lasts, and its grid area is the one
+   * row it shares with `.besideHero` below, which is as tall as everything
+   * else on the page - so it stays in view down to the end of the splits.
+   *
+   * Its height is capped at the window's less the same gutter above and
+   * below, through `--hero-max-height`, which the picture reads to narrow
+   * itself at its own ratio rather than be cropped - see
+   * `charts/RouteMap.module.css`'s `.wrap`. A tall route on a short window
+   * is therefore narrower than the column and centred in it.
+   */
+  .pinned > .hero {
+    position: sticky;
+    top: var(--space-6);
+    --hero-max-height: calc(100vh - 2 * var(--space-6));
+  }
+
+  /*
+   * The right-hand column: the title block, the zones, the four stream
+   * panels and the splits, in their phone order and with the page's own
+   * gap between them.
+   *
+   * One element rather than each section placed in column 2 of its own grid
+   * row, with the hero spanning `grid-row: 1 / span N`. That was the first
+   * version, and it needs N to be at least the number of sections, 7 today,
+   * with nothing to say when a new one pushes past it. Any spare N costs
+   * space instead: an empty implicit row still has the grid's 32px row gap
+   * after it, so measured at 1280x800 a span of 20 left 416px of blank page
+   * below the splits, 13 empty rows' worth.
+   */
+  .besideHero {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    min-width: 0;
+  }
+
+  /* The section rule starts at the column's own edge, not a gutter to the
+     left of it: bled as it is on a phone, it ran across the column gap and
+     into the hero's right edge, so every rule read as joined to the map. */
+  .besideHero > .divided::before {
+    left: 0;
+  }
+
+  /*
+   * Compact charts: the four stream panels sized so all of them fit on one
+   * screen beside the pinned hero, so hovering any one shows every channel
+   * and the dot at once. See docs/reference/frontend.md, "Desktop layout".
+   *
+   * They share one time axis. Only the bottom panel draws it, with its
+   * `Elapsed time` title; the three above keep their vertical grid and
+   * give the axis's space to their plot (`StreamPanel`'s `timeAxis`, set
+   * by `ActivityDetail.tsx`). With an axis on every panel, the time axis
+   * took 72px of each chart and left an 800px window 32px plots.
+   *
+   * This is the height of each of the four plots: what is left of the
+   * window once the gutters, the four sections' furniture, the three gaps
+   * between them and the four charts' own non-plot space are taken out,
+   * shared four ways. `StreamPanel.module.css` adds each chart's own
+   * non-plot space back on. That space comes from the charts' own axis
+   * options (`streamPanelMath.ts`'s `chartFurniturePx`: 16px for a panel
+   * without the axis, 80px for the one with it), set inline on `.detail`
+   * by `ActivityDetail.tsx`. The two other constants were measured at
+   * 1280x800 on a real loop run: a stream section is 64px taller than
+   * its chart, for the section rule's padding, the heading row and the gap
+   * under it, and one section starts 16px after the last ends.
+   *
+   * Clamped at 120px, the plot a full-height 200px panel has, and at 40px.
+   * Measured over the 324 running activities in the store, every one keeps
+   * at least two pace labels from a 32px plot up, and five drop to one at
+   * 28px; 40px leaves a margin.
+   *
+   * The pace panel's note, when there is one, takes its own height and the
+   * section's gap out of the space first: `--pace-note-height` is measured
+   * by `useElementHeight` and set inline by `ActivityDetail.tsx`.
+   */
+  .pinned {
+    --stream-plot-height: clamp(
+      40px,
+      calc(
+        (
+            100svh - 2 * var(--space-6) - 4 * 64px - 3 * 16px - 3 * var(--stream-chart-furniture-bare) -
+              var(--stream-chart-furniture-axis) - var(--pace-note-space, 0px)
+          ) / 4
+      ),
+      120px
+    );
+  }
+
+  /* `var(--space-4)` is `.section`'s own gap, which the note adds above itself. */
+  .pinned:has(.paceNote) {
+    --pace-note-space: calc(var(--pace-note-height, 0px) + var(--space-4));
+  }
+}

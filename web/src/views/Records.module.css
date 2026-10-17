@@ -1,0 +1,57 @@
+/*
+ * The title's own size belongs to `theme/global.css` now, not to this file.
+ * The `.records h1 { font-size: 1.2rem }` block that used to sit here
+ * predates the type scale and was one of the blocks `main.main h1` in
+ * `AppShell.module.css` exists to out-specify. Do not put one back.
+ */
+.records {
+  display: flex;
+  flex-direction: column;
+  /*
+   * Title to the group band. The reference runs 19 dp from a title's
+   * baseline to the first thing under it; `--space-5` lands there once the
+   * title's own line box is counted.
+   */
+  gap: var(--space-5);
+}
+
+/*
+ * The eligibility rule, stated.
+ *
+ * It is load-bearing rather than filler: the store's fastest 400 m effort
+ * is 29.7 s and the record shown is 91.1 s, and a reader who notices that
+ * deserves to be told it is a GPS jump rather than a bug. So it stays -
+ * but it is a caption about the list above it, not a section of its own,
+ * and it gets a caption's treatment: `--text-caption` in `--ink-dim`,
+ * marked off by a rule above it rather than by a box around it.
+ *
+ * The rule is full-bleed and drawn as a pseudo-element, the same way
+ * `Section.module.css` and the shell's staleness strip draw theirs, and for
+ * the same reason: every other line on this page - the group band's own two
+ * edges included - runs edge to edge, and a footnote whose one rule stopped
+ * at the gutter would be the only one that did.
+ */
+.note {
+  position: relative;
+  max-width: 44rem;
+  margin: var(--space-4) 0 0;
+  padding-top: var(--space-4);
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}
+
+.note::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: var(--bleed);
+  left: var(--bleed);
+  height: 1px;
+  background: var(--border);
+}
+
+.note strong {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}

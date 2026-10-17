@@ -1,0 +1,93 @@
+/*
+ * A genuine, externally-imposed height, not a percentage - see
+ * StreamPanel.module.css's `.panel` for the full rationale, and
+ * UPlot.tsx's own module doc for the resize-loop this exists to avoid.
+ * Overview's section (this chart's parent) has no height rule of its own,
+ * so `UPlot`'s inner container would otherwise be sized from its own
+ * content - the kind of container its ResizeObserver must never observe.
+ *
+ * `--chart-height` is 11rem rather than the old 15: the reference's own
+ * plot is 24% of the screen width where 15rem was 58%, and the rest of the
+ * screen wants that height back. See `theme/tokens.css` for the
+ * measurement and for why it is not taken all the way down to the
+ * reference's figure.
+ *
+ * The chart is full width with no horizontal padding of its own, and
+ * VolumeBars gives uPlot zero left padding, so the plot's left edge is
+ * this element's left edge is the page gutter. Do not add an inset here.
+ */
+.chart {
+  position: relative;
+  width: 100%;
+  height: var(--chart-height);
+}
+
+/*
+ * The full-history strip. Shorter on purpose: 148 bars are a texture that
+ * says "this is the shape of three years", not twelve quantities to read
+ * off, and drawing it at the hero chart's height said the opposite.
+ */
+.compact {
+  height: var(--chart-strip);
+}
+
+/*
+ * The hover readout.
+ *
+ * `position: absolute` is the whole point, not a styling choice: this sits
+ * inside `.chart`, which is the parent of the box UPlot's ResizeObserver
+ * watches. Out of flow it adds no height to `.chart`, whose own height is
+ * fixed above anyway, so the observed box cannot move however tall this
+ * gets. A readout in normal flow here is the resize loop UPlot.tsx
+ * documents, rebuilt by hand.
+ *
+ * `pointer-events: none` so it cannot sit between the pointer and the
+ * canvas it is describing and make itself flicker.
+ */
+.readout {
+  position: absolute;
+  top: 0;
+  /*
+   * Centred on the cursor. Half of the box therefore hangs to either side
+   * of `left`, so staying inside the panel is not something this transform
+   * can do on its own: `left` itself is clamped in `volumeBarsMath.ts`'s
+   * `clampReadoutLeft`, against this element's own measured width. `.chart`
+   * sets no `overflow`, so an unclamped half would join the document's
+   * scrollable area rather than being hidden.
+   */
+  transform: translateX(-50%);
+  padding: var(--space-2) var(--space-3);
+  background: var(--raised);
+  border: var(--hairline);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-float);
+  pointer-events: none;
+  white-space: nowrap;
+  /* Overlaps the bars rather than being clipped by the panel's own box. */
+  z-index: 1;
+}
+
+.readoutWhen {
+  margin: 0 0 var(--space-1);
+  color: var(--ink);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.readoutRow {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+  line-height: var(--leading-tight);
+}
+
+/* The numbers in the readout are a column - three rows stacked, read down -
+   which is the one case `theme/global.css`'s `.mono` is still for. The
+   words beside them are not. */
+.readoutRow :global(.mono) {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}

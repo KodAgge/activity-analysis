@@ -1,0 +1,17 @@
+.absent {
+  padding: 1rem;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink-dim);
+}
+
+.label {
+  margin: 0 0 0.25rem;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.reason {
+  margin: 0;
+}

@@ -1,0 +1,248 @@
+/*
+ * The panel the chart is drawn in.
+ *
+ * Its height is stated here and its width comes from the column it sits
+ * in; `ProgressionScatter.tsx` measures both and sets the SVG's `viewBox`
+ * from them, so one coordinate unit in the chart is one CSS pixel on the
+ * screen. That is the whole reason there is no `aspect-ratio` here any
+ * more: the panel used to impose the viewBox's own 800x360 ratio so a
+ * viewBox coordinate could be read as a fraction of the box, and the price
+ * was that every size the chart stated was scaled by `panelWidth / 800` -
+ * 0.455 at the 412 px judging width, 1.36 on a 1088 px desktop column. An
+ * 11 px axis label drew at 5 px on a phone. See `progressionMath.ts`.
+ *
+ * The height is `--chart-progression-height`, its own token rather than a
+ * literal, for the reason `--chart-trend-height` is its own: the Overview's
+ * chart is a different object and must not be dragged taller by this one.
+ * That token carries the measurement - the short version is that one
+ * *eligible* 5 km effort takes 2.5 times as long as the best, the axis stays
+ * one continuous linear scale (`docs/reference/frontend.md`), and pixels
+ * are therefore the only honest lever on the squeeze that leaves.
+ *
+ * `position: relative` is what the hover readout is positioned against,
+ * and this element's own `clientWidth` and `clientHeight` are the outer
+ * bounds the readout's horizontal clamp and its above-or-below flip work
+ * against.
+ */
+.wrap {
+  position: relative;
+  width: 100%;
+  height: var(--chart-progression-height);
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.gridLine {
+  /* `--chart-rule`, not `--grid`: the ladder is a line and `--grid` has
+     become a fill as well. See `theme/tokens.css` for the measurement -
+     the reference's own chart rule is 1.83:1 against its ground and ours
+     was 1.10:1, which two critics read as a plot that frames nothing. */
+  stroke: var(--chart-rule);
+  stroke-width: 1;
+}
+
+/*
+ * The ladder, and the two words that make the axis readable.
+ *
+ * Sans rather than the mono face this used to be set in: nothing numeric
+ * anywhere in the six reference screenshots is monospaced, and
+ * `charts/VolumeBars.tsx` already draws its own ladder in the sans at
+ * `--text-caption`. `tabular-nums` is what a column of times still needs,
+ * and this face carries it.
+ */
+.axisLabel {
+  fill: var(--ink-dim);
+  font-family: inherit;
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * `SLOWER` above the ladder and `FASTER` below it: the only thing on the
+ * panel that says which way is an improvement, on an axis where a faster
+ * effort sits *lower*.
+ *
+ * They are deliberately not a matched pair. `FASTER` is set in full ink at
+ * the bold weight and `SLOWER` in dim grey at the regular one, so the end
+ * of the axis that matters is also the heavier mark - a reader who takes in
+ * one word takes in the right one. Uppercase and tracked, which is the
+ * treatment the reference gives its own axis eyebrows ("JUL AUG SEP") and
+ * its uppercase section bands.
+ */
+.directionSlower,
+.directionFaster {
+  font-family: inherit;
+  font-size: var(--text-caption);
+  letter-spacing: 0.08em;
+}
+
+.directionSlower {
+  fill: var(--ink-dim);
+  font-weight: var(--weight-regular);
+}
+
+.directionFaster {
+  fill: var(--ink);
+  font-weight: var(--weight-bold);
+}
+
+/*
+ * The running best. This is the subject of the chart rather than a guide
+ * line under it, so it is drawn at full strength: it used to be 1.25 units
+ * wide at 55% opacity, which at the phone scale factor came out a 0.57 px
+ * line at half strength and disappeared into the grid.
+ */
+.staircase {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  /* Drawn last, above every mark - see the call site for the measured
+     breakage that forced it. An SVG stroke is a hit target by default, so
+     without this the line would swallow the hover of every point it passes
+     over, the record dots included. */
+  pointer-events: none;
+}
+
+.point {
+  cursor: pointer;
+}
+
+/*
+ * An ineligible effort's disc is a hit target even though its fill is
+ * `none`, and so is an ineligible reverse run's diamond. The default
+ * `visiblePainted` only hits paint, so an unfilled ring would answer the
+ * pointer on its 1px outline alone - a 4px target for a readout that is the
+ * only place the chart says *why* the effort does not count.
+ */
+.point circle,
+.point path {
+  pointer-events: all;
+}
+
+/*
+ * The keyboard focus ring. It can only win because `Mark` sets its paint
+ * as presentation attributes rather than inline `style`, which would beat
+ * this rule; see the docstring there. `stroke-opacity` is reset because an
+ * ineligible mark's outline is drawn at 0.7, and a focus ring is not a
+ * quieter version of the mark.
+ */
+.point:focus-visible circle,
+.point:focus-visible path {
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-opacity: 1;
+}
+
+/*
+ * The hover readout. `position: absolute` is the whole point, not a
+ * styling choice: out of flow it adds no height to `.wrap`, whose height is
+ * stated above, so nothing here can move the panel. `pointer-events: none`
+ * so it cannot sit between the pointer and the point it describes and make
+ * itself flicker. `translate(-50%, -100%)` sits it centred above the point,
+ * offset by the 10px `progressionMath` also knows about, and a point with
+ * too little room above it flips below through
+ * `progressionMath.readoutFlipsBelow`. Its `left` and `top` are both set in
+ * panel pixels, `left` by `volumeBarsMath.clampReadoutLeft`: centred, half
+ * the box hangs either side, and this element sets no `overflow`, so an
+ * unclamped half at the rightmost point widened the document itself.
+ */
+.readout {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 10px));
+  padding: var(--space-2) var(--space-3);
+  background: var(--raised);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-float);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.readoutBelow {
+  transform: translate(-50%, 10px);
+}
+
+.readoutWhen {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+}
+
+.readoutName {
+  margin: var(--space-1) 0 0;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  line-height: var(--leading-tight);
+}
+
+.readoutRow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-5);
+  margin: var(--space-1) 0 0;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+}
+
+.readoutRow span:last-child {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}
+
+.readoutRecord {
+  color: var(--accent);
+  font-weight: var(--weight-bold);
+}
+
+.readoutReason {
+  margin: var(--space-2) 0 0;
+  max-width: 16rem;
+  white-space: normal;
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}
+
+/*
+ * A legend swatch: the same circle the chart draws, at the same radius and
+ * stroke, so the key cannot drift from the panel. `display: block` inside
+ * an inline-flex legend item, with the item's own `align-items: center`
+ * doing the vertical alignment - an inline SVG sits on the text baseline
+ * otherwise and the ring hangs below the words.
+ */
+.swatch {
+  display: block;
+  flex: none;
+  overflow: visible;
+}
+
+/*
+ * A route chart's direction key, under the panel. It repeats the view's own
+ * legend treatment (`views/Progression.module.css`'s `.legend` and
+ * `.legendItem`) so the two keys read as one kind of object when a view
+ * sets them together.
+ */
+.directionKey {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+}
+
+.directionKeyItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}

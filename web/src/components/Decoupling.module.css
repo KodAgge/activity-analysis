@@ -1,0 +1,71 @@
+.decoupling {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.note,
+.caveat {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+}
+
+.headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+}
+
+.value {
+  font-size: var(--text-stat-lg);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.reading {
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+}
+
+.trend {
+  white-space: nowrap;
+}
+
+/* The same shape as the zone table above it (`charts/ZoneBar.module.css`):
+   caption-size uppercase column heads, values in ink at the bold weight. */
+.halves {
+  border-collapse: collapse;
+}
+
+.halves th,
+.halves td {
+  padding: var(--space-1) var(--space-6) var(--space-1) 0;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.halves thead th {
+  padding-bottom: var(--space-2);
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.halves tbody th {
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+  font-weight: var(--weight-regular);
+}
+
+.halves td {
+  color: var(--ink);
+  font-size: var(--text-small);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+}

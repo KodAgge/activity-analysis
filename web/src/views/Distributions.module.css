@@ -1,0 +1,241 @@
+/*
+ * One column at the page gutter, with no card, panel or inner max-width,
+ * for the reasons `Progression.module.css` records. The gap is the same
+ * `--space-8` block rhythm, which `RowList`'s full-bleed band sits in.
+ */
+.distributions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+/* The title and the controls it introduces, bound tighter than the
+   screen's block rhythm, as on the Progression screen. */
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/*
+ * Every control on wrapping rows. `min-width: 0` on the children lets a
+ * select with a long option narrow at phone width rather than widen the
+ * document.
+ */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4);
+}
+
+.controls > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* A small name above a control, as `Activities.module.css` sets its filter fields. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+}
+
+.field select,
+.field input {
+  max-width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: var(--raised);
+  border: var(--hairline);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-small);
+  font-weight: var(--weight-regular);
+}
+
+/* A period and, when custom, its two dates, kept together on one row. */
+.picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+/*
+ * A segmented control: joined radio segments. `min-inline-size: 0`
+ * because a fieldset's default is `min-content`, which would refuse to
+ * narrow.
+ */
+.segmented {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.segmented:disabled {
+  opacity: 0.5;
+}
+
+.legend {
+  margin: 0 0 var(--space-1);
+  padding: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+}
+
+.segments {
+  display: flex;
+}
+
+.segment {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Hidden but focusable, so the arrow keys still drive the group natively. */
+.segmentInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.segmentBody {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  color: var(--ink);
+  font-size: var(--text-small);
+  line-height: var(--leading-tight);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.segment + .segment .segmentBody {
+  margin-left: -1px;
+}
+
+.segment:first-child .segmentBody {
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.segment:last-child .segmentBody {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+/* The chosen segment, marked as Progression marks its chosen pill: accent
+   ink, an inset accent ring and an accent tint, none of which resizes it. */
+.segmentInput:checked + .segmentBody {
+  position: relative;
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--raised));
+  color: var(--accent);
+}
+
+.segmentInput:focus-visible + .segmentBody {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.segmented:disabled .segmentBody {
+  cursor: not-allowed;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  line-height: var(--leading-tight);
+  cursor: pointer;
+}
+
+.toggle:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toggleInput {
+  width: 1.125rem;
+  height: 1.125rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+/* The caption, the chart and the pace caveat as one block. */
+.chartBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* The caption: the section note's size and grey, on the gutter. */
+.caption {
+  margin: 0;
+  max-width: 44rem;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  line-height: var(--leading-body);
+}
+
+/* The pace caveat: one line at the caption's size under the chart, as
+   `Trends.module.css` sets a caveat, with no card. */
+.caveat {
+  margin: 0;
+  max-width: 44rem;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  line-height: var(--leading-body);
+}
+
+.caveat a {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}
+
+/* One compact histogram per year, stacked on one x axis and one y scale. */
+.multiples {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.multiple {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.multipleHead {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-body);
+}
+
+/* One `RowList` per group, each bringing its own band. */
+.lists {
+  display: flex;
+  flex-direction: column;
+}
+
+.status {
+  margin: 0;
+  color: var(--ink-dim);
+}

@@ -1,0 +1,191 @@
+/*
+ * The route hero's own surface: the band the picture sits on and the one
+ * inset everything drawn over it takes. Where the band sits on the page -
+ * its bleed, its desktop grid cell, whether it reaches the top of the
+ * scroll - is the view's, passed in through `className`, because that
+ * depends on what else is on the screen.
+ */
+
+/*
+ * `--hero-inset` is the hero layer's own gutter, and everything drawn on
+ * top of the panel takes it: the activity view's back control and the
+ * scale bar in `charts/Route.module.css`, which reads it through
+ * `--route-inset`. Before this the control sat at 8px and the bar at 48px,
+ * and a layer with two gutters has none.
+ *
+ * 16px rather than the reference's measured 8 dp on its back disc. 8 dp is
+ * right for a disc hugging a corner of a photograph and wrong for the text
+ * label the scale bar carries, and one inset both can live on beats two
+ * that are each individually defensible.
+ */
+.hero {
+  --hero-inset: var(--space-4);
+  position: relative;
+  /*
+   * `--raised`, which nothing else on these screens uses.
+   *
+   * Piece 1's rule - chrome sits on `--panel`, not on white, or it
+   * outshouts the data - is about chrome. This is the data: the reference's
+   * hero is a full-colour satellite map and is deliberately the
+   * highest-contrast thing on its screen. A `--panel` hero is 9 of 255 off
+   * the page and the band simply does not read as a surface at all, which
+   * was the first render of the activity view.
+   */
+  background: var(--raised);
+  overflow: hidden;
+}
+
+/*
+ * The picture's own box, around whichever picture is shown: the map, the
+ * bare trace or the placeholder below.
+ *
+ * The activity view's phone hero collapses as the page scrolls (see the
+ * phone block of `views/ActivityDetail.module.css`), and this is what
+ * shrinks with it: scaled about its top centre by `--hero-scale`, never
+ * resized. A transform leaves the layout size alone, and the layout size is
+ * what `RouteMap`'s and MapLibre's own ResizeObservers watch, so a scroll
+ * frame neither resizes the map's canvas nor refits the route; the scaled
+ * picture still shows the whole of it.
+ *
+ * Nothing else sets `--hero-scale` - the route view, the desktop layout -
+ * and there the declaration is invalid at computed-value time and the
+ * picture is not transformed at all.
+ */
+.picture {
+  transform: scale(var(--hero-scale));
+  transform-origin: 50% 0;
+}
+
+/* Holds the hero's space while the 1 Hz grid is still in flight, so the
+   page does not reflow under the reader when the trace arrives. Square,
+   which is `Route`'s own clamp floor and so the commonest hero shape, and
+   narrowed inside a height cap as the pictures are - see
+   `charts/RouteMap.module.css`'s `.wrap`. */
+.pending {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(100%, var(--hero-max-height));
+  margin: 0 auto;
+  aspect-ratio: 1;
+  color: var(--ink-dim);
+}
+
+/*
+ * The hero's heading. The map is self-evidently the map and the reference
+ * draws no title over it, but the region still takes its name from a real
+ * heading rather than from an `aria-label` with nothing behind it.
+ */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/*
+ * The pace legend's own slot: top right, the hero's own gutter - the same
+ * `--hero-inset` the back control and the scale bar take, read directly
+ * here rather than through `--route-inset`, which only exists inside the
+ * picture's own `.wrap` (`Route.module.css`, `RouteMap.module.css`) and
+ * this sits beside that, not inside it.
+ */
+.legendSlot {
+  position: absolute;
+  top: var(--hero-inset);
+  right: var(--hero-inset);
+  z-index: 1;
+}
+
+/*
+ * Below the map style switch rather than under it: `RouteMap`'s `.switch`
+ * sits at `--route-inset` too, and the two are the same gutter's worth of
+ * inset apart from a plain button row's height. Applied whenever the
+ * picture *may* show a covered map - see `RouteHero.tsx`'s `area` - so the
+ * legend does not jump down once the map finishes loading.
+ */
+.legendBelowSwitch {
+  top: calc(var(--hero-inset) + 2.5rem);
+}
+
+/*
+ * The moment's own label - see `RouteHero.tsx` and docs/reference/frontend.md's
+ * "The moment". Top centre, so it never contests the back control (top left)
+ * or the map style switch and legend (top right).
+ *
+ * `--hero-inset` directly, as `.legendSlot` above reads it: `--route-inset`
+ * is never set at this element's own scope - it exists only inside the
+ * picture's own `.wrap` (`Route.module.css`, `RouteMap.module.css`), a
+ * descendant of this one, not an ancestor, so `var(--route-inset, ...)`
+ * here was always falling through to its fallback.
+ *
+ * Not the hero's own geometric centre, deliberately: the back control is
+ * `BackControl.module.css`'s 2.5rem disc, but the switch
+ * (`RouteMap.module.css`'s `.switch`) measures 7rem, "Light"/"Grey" plus
+ * their padding. Centring on the hero itself put the label of a run over
+ * about 88 minutes - an `h:mm:ss · dd.dd km` moment - into the switch,
+ * caught at 390px against the real store's longest activities. The two
+ * controls share one inset, which cancels out of
+ * the free space between them, so shifting left by half the width
+ * difference - `(7rem - 2.5rem) / 2` - centres the label in the gap that
+ * is actually free rather than in the box that holds it.
+ *
+ * That offset is tuned to the switch, which is a fixed 7rem regardless of
+ * what it says - `RouteHero.tsx` applies it only when `area !== null`,
+ * where the switch is the only thing that can ever occupy the top-right
+ * corner (the legend there sits below it instead, `.legendBelowSwitch`).
+ * See `.momentLabelBelowTop` for the `area === null` case, where the
+ * legend itself - the pace ends, data-driven and not fixed-width - takes
+ * that corner instead.
+ */
+.momentLabel {
+  position: absolute;
+  top: var(--hero-inset);
+  left: calc(50% - 2.25rem);
+  transform: translateX(-50%);
+  z-index: 1;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  color: var(--raised);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/*
+ * `area === null`: there is no switch, ever, so the legend takes the
+ * top-right corner directly (`.legendSlot` with no `.legendBelowSwitch`),
+ * at a width set by the pace ends' own text rather than by a fixed
+ * control - measured wider than the switch on a run whose ends print as
+ * `12:34/km`, 160px against the switch's 112px at 390px wide, which the
+ * switch-tuned offset above does not survive (a 20px overlap, caught with
+ * `/api/basemap` failing on a real run). No offset
+ * tuned to a moving target holds in general, so the label instead drops
+ * below the whole top row and recentres on the hero itself, since nothing
+ * else is at that row.
+ *
+ * `2.5rem` - `.legendBelowSwitch`'s own offset - is *not* enough here: that
+ * reserves the switch's row height, but the legend itself (`PaceLegend`'s
+ * caption, bar and ends, three lines in a padded card) is what actually
+ * occupies this corner when there is no switch, and measures 61px tall
+ * regardless of its width - confirmed identical (61.1875px) whether it
+ * sits here or below a switch elsewhere. First landed at `+2.5rem` here
+ * too: that puts the label's own top 56px into the hero (`--hero-inset`'s
+ * `16px` plus this `40px`), which is still inside the legend's own box -
+ * `.legendSlot`'s `16px` inset to `16 + 61.1875 = 77px` - an overlap this
+ * task's own fix round caught by measurement rather than by inspection.
+ * `4.5rem` (72px, an 88px top) clears the legend's `77px` with an 11px
+ * margin.
+ */
+.momentLabelBelowTop {
+  top: calc(var(--hero-inset) + 4.5rem);
+  left: 50%;
+}

@@ -1,0 +1,199 @@
+/*
+ * See `TrendChart.tsx` for the chart's own registration. Everything here is
+ * a token; a one-off size in this file is the thing the measured type scale
+ * exists to remove.
+ */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/*
+ * The key: which line is which.
+ *
+ * HTML, and a sibling of `.chart` rather than content inside it, for the
+ * reason `StreamPanel`'s heading row is: nothing here can feed back into
+ * the ResizeObserver that drives `setSize`. uPlot's own legend is off
+ * across this application - see `UPlot.tsx`'s module doc for the resize
+ * loop it caused.
+ *
+ * Set at `--text-caption`, one rung under the stat labels it sits below,
+ * because it is a key and not a reading. The reference has no legend
+ * anywhere in the six screenshots - it never draws more than one series -
+ * so this is the one part of the chart with no measurement behind it. What
+ * it does take from the reference is that a key is small, unboxed and on
+ * the gutter, like every other caption on the page.
+ */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  line-height: var(--leading-tight);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/*
+ * A swatch of the line itself: its colour and its own drawn weight, so the
+ * key and the plot are visibly the same thing. Every line is drawn at one
+ * width now - colour carries the ordering, see `TrendChart.tsx` - and the
+ * swatch takes that width inline from the same constant the canvas strokes,
+ * so the two cannot drift.
+ */
+.swatch {
+  display: inline-block;
+  width: 1.25rem;
+  height: 0;
+  border-top-style: solid;
+}
+
+/* The reference line's swatch: dim ink and dashed, matching the rule the
+   `draw` hook strokes on the canvas. */
+.swatchReference {
+  display: inline-block;
+  width: 1.25rem;
+  height: 0;
+  border-top: 1px dashed var(--ink-dim);
+}
+
+/* An envelope's boundary: the band's own fill, because that is the mark the
+   reader is being pointed at. A line swatch here would key the chart to a
+   stroke it does not draw. */
+.swatchBand {
+  display: inline-block;
+  width: 1.25rem;
+  height: 0.625rem;
+  border-radius: 1px;
+  background: var(--pace-band);
+}
+
+.swatchScatter {
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 50%;
+  border: none;
+  opacity: 0.45;
+}
+
+/*
+ * A genuine, externally-imposed height, not a percentage - see
+ * `StreamPanel.module.css`'s `.panel` and `UPlot.tsx`'s module doc for the
+ * resize loop this exists to avoid. It is fixed to match `TrendChart`'s own
+ * `CHART_HEIGHT_PX`, and the two have to move together.
+ *
+ * `--chart-trend-height` rather than the Overview's `--chart-height`, and
+ * the two differing is the point: see the token's own comment for the ink
+ * distribution that sized it. A bar chart's reading is each bar's height, a
+ * trend chart's is where the mass of 200 marks sits, and the second needs
+ * the pixels the first does not.
+ *
+ * The plot's left edge is this element's left edge is the page gutter,
+ * because `TrendChart` gives uPlot zero horizontal padding and puts the
+ * ladder on the right. Do not add an inset here.
+ */
+.chart {
+  position: relative;
+  width: 100%;
+  height: var(--chart-trend-height);
+}
+
+/*
+ * The taller panel, matching `CHART_HEIGHT_PX.tall` in `TrendChart.tsx`.
+ * Half again as tall: the VO2max chart draws two smoothed series far apart,
+ * with the raw per-run points beneath them, which at the
+ * standard height reads as one band rather than as a trend. Expressed
+ * against the standard height rather than as a second literal, so the two
+ * cannot be changed apart.
+ */
+.chartTall {
+  height: calc(var(--chart-trend-height) * 1.5);
+}
+
+/*
+ * A chart carrying a second band for its raw inputs, which takes the strip's
+ * room *in addition to* the height it was asked for - see `STRIP_EXTRA_PX`
+ * in `TrendChart.tsx`, which this has to stay in step with, and
+ * `--chart-trend-strip` for why 6.5rem.
+ *
+ * Both selectors are needed and neither is redundant: a split chart may be
+ * asked for either height, and `.chartTall` alone would win on source order.
+ */
+.chartWithStrip {
+  height: calc(var(--chart-trend-height) + var(--chart-trend-strip));
+}
+
+.chartTall.chartWithStrip {
+  height: calc(var(--chart-trend-height) * 1.5 + var(--chart-trend-strip));
+}
+
+/*
+ * The hover readout, in the same shape `VolumeBars` draws its own, so one
+ * pointer gesture means one thing across the application.
+ *
+ * `position: absolute` is the whole point, not a styling choice: out of
+ * flow it adds no height to `.chart`, whose own height is fixed above
+ * anyway, so the box UPlot's ResizeObserver watches cannot move however
+ * tall this gets. A readout in normal flow here is the resize loop
+ * `UPlot.tsx` documents, rebuilt by hand. `pointer-events: none` so it
+ * cannot sit between the pointer and the canvas and flicker.
+ */
+.readout {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  padding: var(--space-2) var(--space-3);
+  background: var(--raised);
+  border: var(--hairline);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-float);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.readoutWhen {
+  margin: 0 0 var(--space-1);
+  color: var(--ink);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.readoutNote {
+  margin: 0 0 var(--space-1);
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  line-height: var(--leading-tight);
+}
+
+.readoutRow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+  line-height: var(--leading-tight);
+}
+
+/* Several rows stacked and read down is a column, which is the one case
+   `theme/global.css`'s `.mono` is still for. The words beside them are
+   not. Same rule, same wording, as `VolumeBars.module.css`. */
+.readoutRow :global(.mono) {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}

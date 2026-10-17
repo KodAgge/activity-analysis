@@ -1,0 +1,143 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/*
+ * The panel's heading row, and the average legend that replaced the label
+ * this chart used to draw on the canvas.
+ *
+ * Both live *outside* `.panel` below, which is what makes them safe: they
+ * are siblings of the observed box, not content inside it, so nothing here
+ * can feed back into the ResizeObserver that drives `setSize`. See
+ * UPlot.tsx's module doc for what happens when a legend does sit inside.
+ */
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+/* Nothing of its own: `h2` and `h3` already carry the measured scale from
+   `theme/global.css`, and a panel heading is a section heading like any
+   other. The one-off 0.95rem this replaced predated the type scale. */
+.title {
+  margin: 0;
+  color: var(--ink);
+}
+
+/*
+ * The average, as a legend beside the heading rather than as a label drawn
+ * on the canvas.
+ *
+ * The number in it is set in the sans face at `--weight-bold`, not in the
+ * mono one it used to use: piece 1's finding is that nothing numeric
+ * anywhere in the six reference screenshots is monospaced, and `.mono`
+ * earns its place only where digits align in a *column*. One value on one
+ * line is not a column.
+ *
+ * The row keeps one height whatever the legend holds - the average, the
+ * value at the moment, or nothing - so a hover never moves the charts below
+ * it. It did: with the items centred, the dash swatch (a box with no text)
+ * gave the legend its baseline, `.head` aligned that with the heading's
+ * text baseline, and the row stood 3.8 px taller showing the average than
+ * showing the moment's value, so every chart under a hovered one jumped by
+ * that much and a pointer near a plot's edge crossed it and back on each
+ * move. Baseline-aligned items take the legend's baseline from its text
+ * instead, the swatch is centred on its own, and an empty legend holds a
+ * zero-width space so the one without an average (elevation, or any panel
+ * before its chart exists) has the same line as the rest.
+ */
+.legend {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+}
+
+.legend:empty::before {
+  content: '\200b';
+}
+
+.legendValue {
+  color: var(--ink);
+  font-weight: var(--weight-bold);
+}
+
+/*
+ * Hides the average from sight, not from a screen reader, while the moment
+ * value takes its place: the visible span above is `aria-hidden`, and this
+ * is what keeps "average <value>" reachable all the same. Copied from
+ * RouteHero.module.css's own `.srOnly` rather than shared, since neither
+ * file imports the other's stylesheet.
+ */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* A swatch of the reference line itself, so the number in the legend and
+   the dashed line in the chart are visibly the same thing. Only a visual
+   echo of it, not a measured match: a CSS `dashed` border's segment length
+   is the user agent's own function of the border width, so this cannot
+   honour AVERAGE_DASH in streamPanelMath.ts and no browser can be made to.
+   Reading as dashed is all the swatch has to do; a repeating-linear-gradient
+   sized from the same numbers is the only way to get the real coupling. */
+.dash {
+  display: inline-block;
+  align-self: center;
+  width: var(--space-6);
+  height: 0;
+  border-top: 1.5px dashed var(--ink-dim);
+}
+
+/*
+ * A genuine, externally-imposed height, not a percentage. `.section` (this
+ * panel's parent in ActivityDetail) is a flex column with no height of its
+ * own, so a percentage here would resolve to `auto` - sized from this
+ * panel's own content - which is exactly the kind of container
+ * UPlot.tsx's ResizeObserver must never sit inside: see its own module
+ * doc, "Why the chart is built with `legend: { show: false }`". Width
+ * stays fluid at 100%, which is the genuine, externally-imposed dimension
+ * here (the page itself is a flexible layout), while height is fixed to
+ * match StreamPanel's own `options.height` so the panel never has to grow
+ * to fit what uPlot drew inside it.
+ *
+ * The height is the plot's plus the chart's own furniture, and both are
+ * still imposed from outside rather than read from the content.
+ * `--stream-chart-furniture` is set inline by `StreamPanel` from its own
+ * axis options (`chartFurniturePx`: 80px with a time axis, 16px without).
+ * `--stream-plot-height` is 7.5rem, 120px, which with the axis's 80px is
+ * the 200px of `options.height`, unless the activity view's compact
+ * desktop charts set it to fit four panels beside the pinned map (see
+ * `views/ActivityDetail.module.css`'s `.pinned`). `options.height` stays
+ * the construction height; UPlot.tsx's ResizeObserver follows the box with
+ * `setSize` from there.
+ */
+.panel {
+  width: 100%;
+  height: calc(var(--stream-plot-height, 7.5rem) + var(--stream-chart-furniture, 5rem));
+}
+
+/*
+ * uPlot's own overlay element, which is what actually receives the pointer
+ * events a touch drag sets the moment from (see StreamPanel.tsx's `onChart`).
+ * `pan-y` keeps a vertical swipe scrolling the page rather than being
+ * captured by the chart - only the horizontal drag that picks the moment is
+ * this element's to take.
+ */
+.panel :global(.u-over) {
+  touch-action: pan-y;
+}

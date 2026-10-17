@@ -1,0 +1,119 @@
+/*
+ * The badges themselves are `components/Badge.tsx`; this file is only the
+ * arrangement of a badge and its reason, which lives in a popover rather
+ * than as text beside it - see the comment above `<Tag>` in
+ * `views/ActivityDetail.tsx` for why.
+ */
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.effort {
+  display: flex;
+}
+
+.flagList {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.flag {
+  display: flex;
+}
+
+/* The popover's positioning context: it is placed against this element,
+   not the page, so it moves with its own badge rather than with the row. */
+.item {
+  position: relative;
+  display: inline-flex;
+}
+
+/*
+ * A button worn over a `Badge`, resetting every default the element
+ * carries so it reads as the badge underneath it rather than as a button -
+ * the same reasoning as `BackControl.module.css`'s `.back`. `:focus-visible`
+ * carries the same ring `BackControl` and `RangeFilter`'s handles use.
+ */
+.trigger {
+  display: inline-flex;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-pill);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+ * The reason. Visually hidden by default - `RouteHero.module.css`'s own
+ * `.srOnly` clip, not shared with it because the two states this element
+ * switches between (hidden, and the popover below) belong to this file
+ * alone - so `aria-describedby` still reaches it for a screen reader no
+ * matter which state it is in.
+ */
+.reason {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/*
+ * Shown while the badge is hovered or focused, or tapped open on a touch
+ * device (`Tag.tsx`'s `visible`). Absolutely positioned and adding no
+ * height, so no badge ever shifts the numbers below it - see the design's
+ * "No layout shift". The width caps at the page gutter rather than at a
+ * bare 20rem, so a badge near the edge on a narrow phone cannot push the
+ * popover past it.
+ *
+ * **No gap above it, and `pointer-events` restored to `auto`** - WCAG
+ * 1.4.13's Hoverable criterion: a reader has to be able to move the
+ * pointer off the badge and onto the popover to read a reason this long
+ * without it closing underneath them, and a dead pixel of margin between
+ * the two, or a popover that cannot itself be a hover target, is exactly
+ * the gap they would fall through. `Tag.tsx` puts an `onMouseEnter` /
+ * `onMouseLeave` pair on both elements for the same reason.
+ */
+.reasonVisible {
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 0;
+  width: max-content;
+  max-width: min(20rem, calc(100vw - 2 * var(--gutter)));
+  height: auto;
+  padding: var(--space-2) var(--space-3);
+  overflow: visible;
+  clip-path: none;
+  white-space: normal;
+  color: var(--raised);
+  background: var(--ink);
+  font-size: var(--text-small);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-float);
+  /* Above the pinned phone hero's own `z-index: 2`
+     (`views/ActivityDetail.module.css`), so a popover opened on a badge
+     scrolled near the top of the page is never drawn under it. */
+  z-index: 3;
+  pointer-events: auto;
+}

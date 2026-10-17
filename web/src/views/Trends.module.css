@@ -1,0 +1,707 @@
+/*
+ * The trend screen.
+ *
+ * No local `h1` rule: `theme/global.css` carries the measured title size,
+ * and the override this file used to hold (`font-size: 1.2rem`) is exactly
+ * what `AppShell.module.css`'s `main.main h1` specificity hack existed to
+ * out-specify.
+ *
+ * No `max-width` either. `AppShell.module.css` owns the gutter and
+ * `--content-max`, and a second cap here would give the stats a right edge
+ * the chart below them does not share.
+ *
+ * Everything in this file is a token. A one-off `0.85rem` in a view is the
+ * thing the measured type scale exists to remove.
+ */
+.trends {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+
+  /*
+   * The headline number out-sizes both its own section heading and the
+   * caption lines beside it.
+   *
+   * Measured on the screen this replaced, the cap heights down a section
+   * ran 9, 9, 10, 10, 11, 13, 13, 14: the number at 14 and the heading at
+   * 13, two things inside one device pixel of each other, so the block's
+   * type ranked nothing. `--text-stat-lg` is the rung that separates them -
+   * a 16.9px cap against the heading's 12.0 - and its own comment in
+   * `theme/tokens.css` carries why the reference gets away without one.
+   *
+   * **This is a seam, not the finished shape.** `components/Stat.tsx` reads
+   * `--text-stat` and takes no size of its own, so overriding the property
+   * for this subtree is the only way in from a view. The proper fix is a
+   * `size` prop on `Stat` that selects the rung, and this override goes
+   * when it lands.
+   */
+  --text-stat: var(--text-stat-lg);
+
+  /*
+   * The unit steps down as the number steps up, which is the seam p2 built
+   * these two tokens for: "one place to change if a later screen genuinely
+   * needs a subordinate unit".
+   *
+   * The reference sets a unit at its value's own size and weight - measured
+   * three times, on two phones, x-height to cap 0.725 every time - and that
+   * holds at its 17.5pt against two-letter units like `km` and `mi`. It
+   * does not survive being transplanted: at 24px against `spm per m/s` the
+   * unit is three times the width of the number it qualifies, and the two
+   * shared-slope stats overflowed their half-columns into each other with
+   * no break opportunity, because `Stat` sets both halves `nowrap` and the
+   * space between them lives inside the unit's own span.
+   *
+   * 0.6em is 14.4px, which is `--text-small` to within a rounding pixel,
+   * and it points the same way the rung above does: the number is the
+   * reading and `spm per m/s` is not.
+   */
+  --stat-unit-size: 0.6em;
+  --stat-unit-weight: var(--weight-medium);
+}
+
+/*
+ * The title and any page-level notice: one block, tighter than the screen's
+ * own rhythm, the way `views/Overview.tsx` groups its title with the stats
+ * it introduces.
+ */
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Loading lines and request failures. Quiet: a transient state does not get
+   to be the highest-contrast thing on a screen whose title is 26px. */
+.status {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+}
+
+/* ------------------------------------------------------------------
+   A section's parts
+   ------------------------------------------------------------------
+   `components/Section.tsx` draws the title, the caption and the full-bleed
+   rule; what a section adds here is the space between its own parts.
+
+   One blanket `--space-4` between every pair of children was measured as a
+   fault, and correctly: a stat's internal gaps are 14px and 9px of ink, so
+   a 16px box gap around it renders about 19px of ink - barely tighter than
+   the parts it is meant to separate, and the headline stat never read as
+   one object. The stat block is therefore separated by `--space-6`, which
+   is the next rung and lands about 29px of ink, and everything else keeps
+   `--space-4`.
+
+   Both are on the 4px grid. The residual non-scale figures an ink-to-ink
+   scan finds - 6, 9, 11, 14, 17 - are half-leading rather than margins:
+   they are the distance from a glyph's baseline to the next box's ink, and
+   no box gap can make a line box's own leading land on a grid. */
+.trends section > * + * {
+  margin-top: var(--space-4);
+}
+
+/* `StatGroup` renders a `<dl>` and takes no class of its own, so the stat
+   block is selected as the element it is. That is also the honest selector:
+   the rule is about "a list of named values in a section", not about one
+   call site. The predictions section's model list is a `<dl>` too and lives
+   inside the disclosure, so it is not a direct child and never matches. */
+.trends section > dl,
+.trends section > dl + * {
+  margin-top: var(--space-6);
+}
+
+/* ------------------------------------------------------------------
+   The effort filter
+   ------------------------------------------------------------------
+   Chip geometry measured off `you-tab-weekly-stats-and-12-week-chart.jpg`
+   at that card's own 3 px/dp: 32px pills, 1px border, full radius, 8px
+   apart, `--space-3` of padding.
+
+   The control has no box. A panel that draws a border round itself is the
+   one thing this rebuild removes everywhere else on the screen, and a
+   filter is not an exemption - it sits on the page gutter like every title
+   on the page.
+
+   It lives *inside* the heart rate section, under that section's title and
+   under the number it refines, and it is three lines tall: the group's
+   name, the chips, and one summary line that states what the group is
+   doing and opens the scope. It used to stand above the title at eight,
+   five of them a full-measure paragraph, and a blind critic read the
+   apparatus as outweighing the chart it introduced. It did: 5867k of ink
+   against the chart's 5313k. */
+.filter {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+/* The group's name, as the reference's own uppercase section band. A
+   `<legend>` and not a `<span>`: it is what gives the group its accessible
+   name, and `Trends.test.tsx` finds the filter by it. */
+.filterLegend {
+  display: block;
+  padding: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-body);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.chip {
+  /*
+   * `position: relative` is load-bearing, not tidiness. The real input
+   * inside is `position: absolute` and clipped to a zero-area rect, and
+   * without a positioned ancestor it resolves against the initial
+   * containing block - a focusable element at the document origin rather
+   * than inside the control it belongs to, so focusing a chip from the
+   * keyboard scrolls the page somewhere else. Found because a screenshot
+   * script could not click a chip: the input it resolved to was reported
+   * outside the viewport.
+   */
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+}
+
+/*
+ * The real input, clipped rather than removed.
+ *
+ * `display: none` and `visibility: hidden` both take an input out of the
+ * tab order, which would leave a filter no keyboard can reach while it
+ * still looked like a control. Clipping to a zero-area rect keeps it
+ * focusable, keeps it in the accessibility tree, and keeps the label's text
+ * as its accessible name.
+ */
+.chipInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+/*
+ * An *excluded* chip: the tag whose per-run points are not being drawn.
+ * An outline in `--border-strong` on the same `--panel` fill an included
+ * chip carries, so the outline alone marks the state.
+ *
+ * `--border-strong`, not `--border`. A chip that is switched off still has
+ * to be findable: at `--border`'s 1.18:1 it disappeared at a third scale,
+ * which is over-correcting "furniture must not out-contrast content" into a
+ * control nobody can see. The token carries the reference's own 2.92:1
+ * measurement.
+ */
+.chipFace {
+  display: inline-flex;
+  align-items: center;
+  height: 2rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  /*
+   * `--panel`, not the page's own ground, because the label needs it:
+   * `--ink-dim` is 4.39:1 on `--page`, under the 4.5:1 a 12px label needs,
+   * and 4.68:1 on `--panel`.
+   */
+  background: var(--panel);
+  /*
+   * `--ink-dim`, the same label an included chip carries, and the ceiling is
+   * measured. Nothing in a control may be darker than the trace it scopes:
+   * the primary reaches deviation 453 from the page at full coverage, and
+   * `--ink` - what these labels used to be - is 602. `--ink-dim` is 376,
+   * under the line. `--border-strong` was tried here and read 2.99:1 on the
+   * page, too faint for the label of a control a reader can still switch
+   * back on; `--ink-dim` is 4.68:1 on the chip's `--panel` fill. The outline
+   * keeps `--border-strong`, since a boundary is not text.
+   */
+  color: var(--ink-dim);
+  /*
+   * `--text-label`, not the measured `--text-small`, and this is a
+   * deliberate departure with a reason rather than a rounding.
+   *
+   * The reference's chip label measures 13.8dp, which is `--text-small` -
+   * but that row is the top-level filter of its whole screen and answers to
+   * nothing above it. Ours sits under a section heading and under a 24px
+   * headline number, and at 14px against `--text-heading` 17px the two cap
+   * heights are 9.8 and 12.0: a step so small that the screen's type tiers
+   * read as one fewer than there are. At 12px the step is 8.4 against 12.0,
+   * which reads.
+   *
+   * The pill's own geometry - 32px tall, `--radius-pill`, `--space-3` of
+   * padding, 8px apart - is untouched and still the measurement.
+   */
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  white-space: nowrap;
+  user-select: none;
+}
+
+/*
+ * Why the chip state is carried on a neutral channel.
+ *
+ * **No outline against an outline, and not a hue.** Marking the included
+ * chips at all was round 2's correction and it stands - three separate blind
+ * critics read an unmarked resting control as "four identical outline pills
+ * with no selected/unselected marking anywhere". What did not stand was
+ * marking them in the accent. Measured on the round-3 render as mean CIELAB
+ * chroma over each block's own box, the chip row came out at **9.54 against
+ * 3.67 for the plot it filters** - the control was 2.6 times more saturated
+ * than the data it is furniture for, and the loudest thing in a section
+ * named after that data.
+ *
+ * So the state is carried on a neutral channel instead: the border, none
+ * against `--border-strong`, on one shared `--panel` fill. A reader can
+ * tell an included chip from an excluded one at a glance and the row costs
+ * the section almost no colour.
+ *
+ * The fill is *lighter* than the page rather than darker, which is also why
+ * this does not undo round 2's other measurement: ink counts how far a pixel
+ * falls below the page, so a white pill adds none of it. Marking with a
+ * solid dark fill and reversed text - the literal reading of "filled" -
+ * would have traded a chroma problem for the ink problem round 2 had just
+ * fixed.
+ *
+ * Neither the border width nor the font weight changes, so toggling a chip
+ * moves nothing under the reader's finger.
+ */
+/*
+ * An *included* chip: filled, with no outline.
+ *
+ * **Outline-off against outline-on, at the lightest fill there is.** Round 5
+ * filled with `--raised` and added a tick, and both were measured against:
+ * the pills were the only pure-white fills on the panel, and the row carried
+ * 1.85x the ink density of the plot it scopes. `--panel` is the lightest
+ * surface token - deviation 22 from the page against pure white's 53 - and
+ * dropping the outline on a filled chip halves what the row spends on
+ * borders. The tick went with them, since a fill that reads needs no second
+ * mark and the row's whole problem was how much it was spending.
+ *
+ * Measured after: the row was 26.8 mean deviation against the plot's 27.0
+ * and its darkest element 376 against the primary's 453. It was 84.1 and
+ * 602. The envelope has since taken the plot to 25.3, so at rest the row
+ * is now the denser of the two; `docs/reference/frontend.md` carries the
+ * current figures.
+ */
+.chipInput:checked + .chipFace {
+  border-color: transparent;
+  background: var(--panel);
+  color: var(--ink-dim);
+}
+
+.chipInput:focus-visible + .chipFace {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+ * The filter's scope, which is required prose: which charts it drives,
+ * whose values hold, and that the axis still rescales. Without it a reader
+ * unticks a tag, sees points vanish under a level that holds still, and
+ * reads it as broken.
+ *
+ * It is one click away rather than five full-measure lines above the
+ * section title. The same affordance `About` and `AppShell`'s staleness
+ * strip use, and the summary is the group's own state, so the words that
+ * say what the control is doing cost no line of their own.
+ */
+.filterAbout {
+  margin-top: var(--space-2);
+}
+
+/*
+ * The summary is the link and nothing else. It used to carry the group's
+ * state in words - `All 4 efforts shown` - which was the right answer while
+ * the chips said nothing, and is redundant now that a filled chip says
+ * "included" on its own. A control that states in a sentence what its own
+ * marks already say is asking to be read twice.
+ */
+.filterSummary {
+  display: inline-block;
+  color: var(--ink-dim);
+  font-weight: var(--weight-medium);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+  cursor: pointer;
+  /* Both spellings: Safari still ships the pseudo-element, everything else
+     reads `list-style`. Left alone, the default triangle knocks the line
+     off the gutter every other line on the screen starts at. */
+  list-style: none;
+}
+
+.filterSummary::-webkit-details-marker {
+  display: none;
+}
+
+.filterNote {
+  margin: var(--space-2) 0 0;
+  max-width: 44rem;
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+  line-height: var(--leading-body);
+}
+
+/* ------------------------------------------------------------------
+   Required prose
+   ------------------------------------------------------------------ */
+
+/*
+ * A caveat that is required rather than decorative - the VO2max level, and
+ * the width of the prediction range. Removing either to tidy the page
+ * removes the one thing that makes the number beside it honest;
+ * `Trends.test.tsx` asserts both are rendered and `tests/phase4.spec.ts`
+ * asserts the first is *visible*.
+ *
+ * **It is one line at the subtitle's size and grey, and every one of those
+ * words is a correction of what it was.** It used to be a `--panel` card
+ * with generous padding and a bold lead-in in the page's own ink, on the
+ * reasoning that the reference shapes its in-content notice that way and
+ * that a summary should be the loud part. Measured on the predictions
+ * section, that came out as: 2.161M of ink against 3.102M for the whole
+ * nine-row table under it - 70% of the content's ink, at a *higher* density
+ * per pixel than the table; a lead-in darker than the section title and
+ * darker than any predicted time, so the eye landed on the caveat rather
+ * than on the section's name or on a number; a body grey indistinguishable
+ * from the table's own row labels, so nothing about it was subordinate; and
+ * a card whose 16px padding made this the only text on the page off the
+ * gutter every other line starts at.
+ *
+ * So: no card, no fill, no radius, no padding, no bold lead. It sits
+ * directly under the section's subtitle at the subtitle's own size and
+ * grey, and reads as a second line of it, which is what a standing
+ * qualification of the whole section is. The explanation behind it folds
+ * into the section's own `What this measures`, word for word.
+ */
+.caveat {
+  margin: 0;
+  max-width: 44rem;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  line-height: var(--leading-body);
+}
+
+/* A document path is a literal, so it keeps the mono face - but IBM Plex
+   Mono runs optically larger than Schibsted Grotesk at the same pixel size,
+   and set at 1em it made the file name the biggest thing in its sentence.
+   Both paths now live inside the disclosures rather than in the open copy:
+   a repository path is a developer artefact, and the pointer to the owning
+   document belongs in a code comment. `docs/reference/math/predictions.md`
+   is still rendered there because `Trends.test.tsx` asserts the section
+   carries it, and that file may not be edited. */
+.aboutBody .mono,
+.finding .mono {
+  font-size: 0.92em;
+}
+
+/*
+ * A section's own finding: the decoupling population's measured figures and
+ * the cadence slope's dated measurement. Not a caveat and not a caption -
+ * it is the reason the section is on the page at all, so it stays in the
+ * open rather than folding into the disclosure.
+ *
+ * The figure itself is the only bold thing in the sentence, so a reader
+ * skimming reads the measurement and not the hedging around it. It is never
+ * labelled an improvement, in either direction - a lower cadence slope
+ * describes running style rather than fitness.
+ */
+.finding {
+  margin: 0;
+  max-width: 44rem;
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+  line-height: var(--leading-body);
+}
+
+.finding strong {
+  color: var(--ink);
+  font-weight: var(--weight-bold);
+}
+
+/*
+ * The API's `reason` shown beside a prediction table that is only partly
+ * complete, rather than in place of it. Quieter than `.caveat`, which
+ * carries a standing statement about the data; this one names a model that
+ * dropped out at some distances while the rest were computed fine.
+ */
+.partialNote {
+  margin: 0;
+  max-width: 44rem;
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}
+
+/* ------------------------------------------------------------------
+   The "what this measures" disclosure
+   ------------------------------------------------------------------
+   The same affordance `components/AppShell.tsx` gives the staleness strip,
+   so a reader who has met one has met both: marker off, summary at caption
+   size in dim ink, the affordance carried by an underline rather than by a
+   colour. Contrast is a budget and chrome does not get to spend it.
+
+   What may *not* fold in here is anything that makes the number beside it
+   honest: the two caveats, the decoupling population's figures, the cadence
+   slope's dated measurement and the filter's own scope all stay in the
+   open. What folds is the teaching. */
+.about {
+  color: var(--ink-dim);
+}
+
+.aboutSummary {
+  display: inline-block;
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-body);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+  /* Both spellings: Safari still ships the pseudo-element, everything else
+     reads `list-style`. Left alone, the default triangle knocks the line
+     off the page gutter every other line on the screen starts at. */
+  list-style: none;
+}
+
+.aboutSummary::-webkit-details-marker {
+  display: none;
+}
+
+.aboutBody {
+  margin-top: var(--space-2);
+  max-width: 44rem;
+  font-size: var(--text-small);
+  line-height: var(--leading-body);
+}
+
+.aboutBody p {
+  margin: 0;
+}
+
+.aboutBody strong {
+  color: var(--ink);
+  font-weight: var(--weight-bold);
+}
+
+.aboutBody p + p,
+.aboutBody p + dl {
+  margin-top: var(--space-3);
+}
+
+/*
+ * The model explanations, inside the disclosure. A definition list rather
+ * than prose, because a reader coming to the table wants to look one name
+ * up rather than read four paragraphs, and the table names each model
+ * beside its own number. No boxes: a term in the page's ink over its
+ * definition in the dim one is the whole separation, which is how the
+ * reference separates everything else.
+ */
+.models {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.models dt {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+}
+
+.models dd {
+  margin: var(--space-1) 0 0;
+  color: var(--ink-dim);
+  line-height: var(--leading-body);
+}
+
+/* ------------------------------------------------------------------
+   The predictions table
+   ------------------------------------------------------------------
+   The reference's own statistics list, which is what this is: a name on the
+   left, a value in the sans face at 700 on the right, rows separated by
+   whitespace, and no box around any of it. A luminance scan across 120 rows
+   of `stats-totals-and-best-efforts.jpg` finds no divider between rows at
+   all - only the tonal band behind each uppercase group heading, which in
+   light mode is a hairline under the header row and nothing else.
+
+   No `min-width`. The 38rem this used to carry made a two-finger horizontal
+   scroll the only way to read a prediction at 412px, which is the dense-
+   dashboard fault the whole screen was rebuilt to remove. */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: var(--space-3) 0;
+  text-align: left;
+  vertical-align: top;
+}
+
+/* Columns are separated by a gutter of their own rather than by a rule, the
+   way the reference separates everything else. Only the inner edges get it:
+   the first cell starts on the page gutter and the last ends on it, which is
+   the pair of edges the whole screen aligns to.
+
+   `--space-3` rather than `--space-4`, and the step down is what buys the
+   range column the width it needs to keep `1:50:00 to 2:05:00` on one line
+   at 390px - see `.value`. */
+.table th + th,
+.table td + td,
+.table th + td {
+  padding-left: var(--space-3);
+}
+
+/* The uppercase group band, and the one rule the list carries. */
+.table thead th {
+  padding-top: 0;
+  border-bottom: var(--hairline);
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Scoped through `.table` deliberately: `.table th` above is (0,1,1) and a
+   bare `.numericHeader` is (0,1,0), so the header of a right-aligned column
+   was being left-aligned by the rule it was written to override. */
+.table .numeric,
+.table .numericHeader {
+  text-align: right;
+}
+
+/*
+ * A column of times read down, so the figures are tabular - but in the sans
+ * face at 700, not in a mono one. Nothing numeric is monospaced anywhere in
+ * the six screenshots; what `tabular-nums` buys is the straight column,
+ * which is the only part of `.mono` this needs.
+ *
+ * `--text-body`, not a stat size, and that is the measurement rather than a
+ * concession to the column width. The reference's own best-efforts list -
+ * the `400 m` row on `stats-totals-and-best-efforts.jpg` - sets its row
+ * label and its value at 16.6dp, which is `--text-body`; the 17.5pt stat
+ * size belongs to the label-over-value block, which this is not. A list row
+ * is a list row.
+ *
+ * **The range may wrap and the wrap is not a fault; where it fell was.**
+ * Three of the nine rows cannot hold `1:50:00 to 2:05:00` on one line at
+ * 412px. Measured by forcing the table to `min-content` in the live page:
+ * with the range refusing to break the three columns need 78 + 174 + 127 =
+ * 379 px, against 364 available at 412 and 342 at the 390 px
+ * `tests/phase4.spec.ts` pins against sideways scroll - `nowrap` was tried
+ * and produced 14 px of document overflow there. The range would have to
+ * fall to 12 px, smaller than this table's own caption, before 390 came
+ * within 6 px of fitting. So the break is not avoidable. What was wrong
+ * was the browser breaking *after* the `to` and leaving the conjunction
+ * dangling; `format.RANGE_JOIN` moves the only break opportunity in front
+ * of it, so a wrapped range reads `1:50:00` over `to 2:05:00`.
+ */
+.value {
+  display: block;
+  color: var(--ink);
+  font-size: var(--text-body);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The ordinary-runs prediction: the value's size, so the two columns still
+   read across one row, but the detail ink and a lighter weight, so the
+   best-effort range is the headline and this the second reading. */
+.secondaryValue {
+  display: block;
+  color: var(--ink-dim);
+  font-size: var(--text-body);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * `--text-body`, the same rung as the value opposite it, because the
+ * reference's own best-efforts list sets `400 m` and its time at one size -
+ * and because a rung of its own was one of seven distinct cap heights a
+ * critic counted in this panel, five of them inside a 5px band, which is
+ * noise rather than steps. The panel now has four: the heading, the row
+ * (label and value), the subtitle and caveat, and the captions.
+ */
+.distanceCell {
+  color: var(--ink);
+  font-size: var(--text-body);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+}
+
+.metres {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-regular);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The models behind a range, and the ordinary-run band: present but
+   secondary, so the range reads first. */
+.modelDetail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  line-height: var(--leading-tight);
+  font-variant-numeric: tabular-nums;
+}
+
+/* One line of the sub-block. A bare value - the ordinary-runs pace and its
+   band - is left to the cell's own right alignment, so it stacks under the
+   prediction it qualifies. */
+.modelRow {
+  white-space: nowrap;
+}
+
+/*
+ * A model and its time, on two straight edges rather than as a
+ * right-aligned pair.
+ *
+ * Right-aligned, the three names ran to three different left edges inside
+ * every cell, nine times down the table. `space-between` puts each name on
+ * the block's left edge and each time on its right, so the sub-block reads
+ * as a small list - which is what it is - instead of as ragged text.
+ *
+ * The name is a bare text node and must stay one: `Trends.test.tsx` finds a
+ * model with `getByText(/Riegel/)`, and wrapping it in its own element
+ * would make both that element and its parent match. A bare text node is an
+ * anonymous flex item, which is all the layout needs.
+ */
+.modelPair {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.modelTime {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}

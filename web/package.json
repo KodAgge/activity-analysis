@@ -1,0 +1,47 @@
+{
+  "name": "web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "test": "vitest run --passWithNoTests --reporter=default --reporter=json --outputFile.json=.vitest-report.json && node scripts/check-test-floor.mjs .vitest-report.json",
+    "test:e2e": "playwright test",
+    "generate:api": "bash scripts/generate-api.sh",
+    "check:api": "npm run generate:api && git diff --exit-code src/api/schema.d.ts",
+    "check": "npm run lint && npm run typecheck && npm run check:api && npm run test"
+  },
+  "dependencies": {
+    "@protomaps/basemaps": "5.7.2",
+    "@tanstack/react-query": "^5.102.8",
+    "@tanstack/react-router": "^1.170.32",
+    "maplibre-gl": "6.11.1",
+    "openapi-fetch": "^0.17.0",
+    "pmtiles": "4.5.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "uplot": "^1.6.32"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.1.0",
+    "jsdom": "^30.0.1",
+    "openapi-typescript": "^7.13.0",
+    "oxlint": "^1.79.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  }
+}

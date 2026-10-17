@@ -1,0 +1,36 @@
+/*
+ * See `Badge.tsx` for what was measured off the reference and why there are
+ * exactly two tones. Everything here is a token.
+ */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  /* The reference's pills are tall for their type: the "Se mer" chip runs
+     about 1.9x its own cap height in padding. `--space-1`/`--space-2` is
+     that ratio on the 4px grid at this size. */
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  /* A badge is one short phrase and must never wrap mid-phrase: `PR 1k 1mi
+     3k` broken across two lines reads as two badges. */
+  white-space: nowrap;
+}
+
+.accent {
+  background: var(--accent);
+  color: var(--raised);
+}
+
+/*
+ * A caveat, not an achievement: the page's ink on the page's own quiet
+ * surface, inside the hairline that is what light mode has instead of a
+ * tonal step.
+ */
+.quiet {
+  background: var(--panel);
+  border: var(--hairline);
+  color: var(--ink-dim);
+}

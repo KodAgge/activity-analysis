@@ -1,0 +1,40 @@
+/*
+ * The card itself. Its position over the hero is `RouteHero.module.css`'s -
+ * that depends on whether a map style switch sits above it, which is the
+ * hero's decision, not this component's.
+ */
+.legend {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-card);
+  /* Matches the map style switch's own surface, the other floating control
+     on this picture. */
+  background: var(--raised);
+  box-shadow: var(--shadow-float);
+}
+
+.caption {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+}
+
+.bar {
+  width: 5.5rem;
+  height: 6px;
+  border-radius: var(--radius-pill);
+}
+
+.ends {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  color: var(--ink);
+  font-size: var(--text-label);
+  font-variant-numeric: tabular-nums;
+}

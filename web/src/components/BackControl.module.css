@@ -1,0 +1,65 @@
+/*
+ * The way back, shared by the activity view and the route view.
+ *
+ * Measured on `activity-detail-map-hero-and-sheet.jpg`: the back disc spans
+ * x 24..143 through its own centre row, so 120 px = 40 dp across, and its
+ * left edge sits 24 px = 8 dp from the screen edge. The two discs at the
+ * top right are the same 120 px with 25 px = 8 dp between them, so 8 dp is
+ * this control's whole spacing vocabulary.
+ *
+ * Worn by both a <button> (history-back) and an <a> (the fallback when
+ * there is no history to go back to), so it resets the chrome of each.
+ */
+.back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  /*
+   * A solid disc of ink, not a tint of the surface.
+   *
+   * Measured on the reference: its back disc is rgb(20,20,20) - the app's
+   * own page colour - laid opaque over the map, carrying a 2.27:1 contrast
+   * ratio against the median map pixel and up to 7.14:1 against the
+   * lightest. It is unambiguously an object.
+   *
+   * The first version of ours was `--panel` on the `--raised` hero, which
+   * is 1.095:1. A critic called it a 5%-contrast ghost and was being
+   * generous. Light mode cannot pay for this the way the reference does -
+   * filling with our own page colour would be near-white on white - so the
+   * disc takes the palette's ink instead and the glyph flips to the surface
+   * colour. That is 15.7:1, higher than the reference's median, because a
+   * plain white ground gives a control none of the visual noise a
+   * photograph does.
+   */
+  background: var(--ink);
+  color: var(--raised);
+}
+
+.back:hover {
+  background: var(--ink-dim);
+}
+
+.back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Over the hero, on the hero layer's one inset (`RouteHero.module.css`'s
+   `--hero-inset`), lifted off the panel it does not own - which is the only
+   job the shadow has here. */
+.floating {
+  position: absolute;
+  top: var(--hero-inset);
+  left: var(--hero-inset);
+  z-index: 1;
+  box-shadow: var(--shadow-float);
+}

@@ -1,0 +1,170 @@
+/*
+ * `position: relative` for the same reason `Splits.module.css`'s
+ * `.tableWrap` has it: the `.srOnly` caption and bar header below are
+ * absolutely positioned, and without a positioned ancestor their
+ * containing block is the initial one, so they escape this table's box
+ * entirely and contribute their static position to the document's
+ * scrollable overflow. That fits inside a phone viewport today only
+ * because this table does; anchoring them here does not depend on that.
+ */
+.figure {
+  position: relative;
+  margin: 0;
+}
+
+/*
+ * A table rather than a grid of divs: the columns are genuinely tabular
+ * (zone, boundary, time, share) and a screen reader gets row and column
+ * headers for free. `table-layout: fixed` keeps the bar column from being
+ * squeezed by a long boundary label.
+ */
+.table {
+  width: 100%;
+  max-width: 30rem;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.table th,
+.table td {
+  padding: var(--space-1) var(--space-2) var(--space-1) 0;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.table thead th {
+  padding-bottom: var(--space-2);
+  color: var(--ink-dim);
+  /* `--text-caption` is 11px, which is the floor a viewport audit set for
+     this project: the 0.65rem this column once used rendered 10.4px. */
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.colZone { width: 2.8rem; }
+.colEdges { width: 4.4rem; }
+/* Wide enough for the longest duration `format`'s `duration()` can emit
+   here, not the longest one a single activity happens to carry. Past an
+   hour it switches to `h:mm:ss`, and the Overview's own zone rows sum every
+   activity in the store, so `hhh:mm:ss` is the case to size for: 9 glyphs
+   of IBM Plex Mono (0.6em advance) at `.time`'s `--text-small` (14px) is
+   75.6px inside a content box of 86.4 - 8 = 78.4px. Re-measured when the
+   cell padding moved to `--space-2` and the type to the scale; at the
+   previous 3.4rem the fixture's own 1:10:00 already spilled into Share,
+   which is the overlapping-numbers fault this file was rewritten to fix.
+   Verified live at 412px: no cell in the real store's seven rows
+   overflows. */
+.colTime { width: 5.4rem; }
+.colShare { width: 2.6rem; }
+
+/*
+ * The row's own name, set the way every other label on this screen is set:
+ * `--text-label`, `--weight-medium`, dim ink - the same three values
+ * `Stat.module.css` gives the name above a stat value.
+ *
+ * It used to be the opposite - `--text-small` at 700 in full ink, bolder
+ * and darker than the duration beside it - which "inverts the stat block's
+ * own convention by setting the row label Z4 bolder and darker than the
+ * data" beside it (round-3 critic). The screen has decided that the
+ * number is the heaviest content type and its name is subordinate; a
+ * table does not get its own answer to that.
+ */
+.zone {
+  color: var(--ink-dim);
+  font-weight: var(--weight-medium);
+  font-size: var(--text-label);
+}
+
+.edges {
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+}
+
+/* The one elastic column: every other width is stated in the colgroup
+   above, so the bar takes whatever is left. */
+.trackCell {
+  width: auto;
+}
+
+.track {
+  display: block;
+  height: 0.625rem;
+  background: var(--grid);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+/* display:block on the fill too: it is a span, and an inline box ignores
+   both a height and a percentage width, which renders an empty track. */
+.fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+}
+
+/*
+ * The measurement, and so the heaviest thing in the row: full ink at 700,
+ * which is what a value is everywhere else on this screen. The share
+ * beside it stays dim and regular - it is the same seconds restated as a
+ * fraction, not a second measurement - so the row reads time first,
+ * share second, name last.
+ */
+.time {
+  color: var(--ink);
+  font-weight: var(--weight-bold);
+  font-size: var(--text-small);
+}
+
+.share {
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+}
+
+/*
+ * Qualified with the element, the way `Splits.module.css` and
+ * `Activities.module.css` do it, so these beat the `.table th, .table td`
+ * shorthand block above on specificity rather than on source order - which
+ * CSS does not decide by. Unqualified, `.time` is (0,1,0) against that
+ * block's (0,1,1) and loses, and the numbers render left-aligned with
+ * their tabular figures lining up against nothing.
+ */
+.table td.time,
+.table td.share,
+.table th.numericHeader {
+  text-align: right;
+}
+
+/* The last column: nothing sits to its right, so the shared trailing
+   padding only pushes the number away from the table's own edge. Also
+   qualified - the `padding` shorthand above overrides a bare
+   `padding-right` here for the same reason. */
+.table td.share,
+.table th.shareHeader {
+  padding-right: 0;
+}
+
+.caption {
+  margin-top: var(--space-3);
+  max-width: 30rem;
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}
+
+/* Visible to assistive technology, not on screen. Used for the table's
+   caption and for the bar column's header, both of which name something a
+   sighted reader can already see. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

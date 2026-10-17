@@ -1,0 +1,134 @@
+/*
+ * No width of its own: the control fills whatever box the caller gives it,
+ * and where that box needs to be wider than a select is the caller's
+ * layout to decide - see `.rangeField` in Activities.module.css.
+ * `min-width: 0` so a grid or flex item can actually shrink, rather than
+ * taking its content's intrinsic minimum and pushing the row wide, which
+ * is the fault `AppShell`'s header had.
+ */
+.filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  font-size: 0.78rem;
+  color: var(--ink-dim);
+}
+
+/*
+ * Matched to `.field` in Activities.module.css, the label style every other
+ * control in that filter row carries. A range filter is a generic component
+ * and does not know it is in that row, but a sentence-case label beside six
+ * uppercase ones reads as a mistake rather than as a distinction - seen in
+ * a rendered screenshot, not in a test, because no assertion here looks at
+ * letter case.
+ */
+.label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.readout {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * One track with two inputs stacked on it. The inputs are transparent and
+ * absolutely positioned over the same box, so the pair reads as one
+ * control; the painted track and the selected span below are what the
+ * reader actually sees.
+ *
+ * The height is the thumb's, not the track's: an `input[type=range]` is as
+ * tall as its thumb, and a shorter box would clip it.
+ */
+.track {
+  position: relative;
+  height: 1.25rem;
+  margin-top: 0.2rem;
+}
+
+.track::before {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  height: 3px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: var(--border);
+}
+
+/* The span between the two handles, which is the part of the range that
+   passes the filter. */
+.selected {
+  position: absolute;
+  top: 50%;
+  height: 3px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+/*
+ * Both inputs cover the whole track, so either thumb is reachable wherever
+ * it sits. `pointer-events: none` on the input with `auto` on the thumb is
+ * what stops the upper input swallowing every press aimed at the lower
+ * one; without it the lower handle is unreachable by pointer entirely,
+ * while the keyboard still works, which is the kind of half-broken that
+ * passes a unit test.
+ *
+ * Their stacking order is set inline by the component rather than here,
+ * because which of the two must be on top depends on where the handles are:
+ * see `lowOnTop` in RangeFilter.tsx.
+ */
+.handle {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  margin: 0;
+  appearance: none;
+  background: none;
+  pointer-events: none;
+}
+
+.handle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.handle::-webkit-slider-thumb {
+  appearance: none;
+  pointer-events: auto;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  border: 2px solid var(--raised);
+  background: var(--accent);
+  box-shadow: 0 1px 3px var(--shadow);
+  cursor: pointer;
+}
+
+.handle::-moz-range-thumb {
+  pointer-events: auto;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  border: 2px solid var(--raised);
+  background: var(--accent);
+  box-shadow: 0 1px 3px var(--shadow);
+  cursor: pointer;
+}
+
+/* The tick marks the datalist supplies; the track above draws its own line,
+   so the input's need not. */
+.handle::-webkit-slider-runnable-track {
+  background: none;
+}
+
+.handle::-moz-range-track {
+  background: none;
+}
