@@ -1,0 +1,103 @@
+/*
+ * See `TrainingLoadChart.tsx`. The key and the readout take `TrendChart`'s
+ * shapes, so the section reads as one of the page's charts; everything here
+ * is a token.
+ */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  line-height: var(--leading-tight);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* A line's swatch: its colour and drawn width, set inline from the constant the canvas strokes with. */
+.swatch {
+  display: inline-block;
+  width: 1.25rem;
+  height: 0;
+  border-top-style: solid;
+}
+
+/* The bars' swatch: a small bar at the bars' own tone. */
+.swatchBar {
+  display: inline-block;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 1px;
+  opacity: 0.5;
+}
+
+/*
+ * A definite height imposed from outside, which the canvas is built at;
+ * see `UPlot.tsx` for the resize loop a content-sized box causes.
+ */
+.chart {
+  position: relative;
+  width: 100%;
+  height: var(--chart-load-height);
+}
+
+/* `TrendChart`'s readout, so one pointer gesture means one thing across the page. */
+.readout {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  padding: var(--space-2) var(--space-3);
+  background: var(--raised);
+  border: var(--hairline);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-float);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.readoutWhen {
+  margin: 0 0 var(--space-1);
+  color: var(--ink);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.readoutRow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+  line-height: var(--leading-tight);
+}
+
+/*
+ * Proportional, not tabular: each value is read on its own, and Schibsted
+ * Grotesk's tabular figures widen the period in `31.4 km` and the sign in
+ * `+5` to a figure's width.
+ */
+.readoutValue {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: proportional-nums;
+}

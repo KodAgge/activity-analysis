@@ -1,0 +1,107 @@
+/*
+ * The eight weeks before the plan. Sized as `PlanVolume.module.css` sizes
+ * its own: the column's width, and the height the measured viewBox gives it.
+ */
+.chart {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* The line standing in for the stat row when no run was recorded. */
+.summary {
+  margin: 0;
+}
+
+/* The calendar's own loading line, `PlanCalendar.module.css`'s `.loading`. */
+.note {
+  margin: 0;
+  color: var(--ink-dim);
+}
+
+.panel {
+  width: 100%;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* Runna's grid: faint rules the bars stand in front of. */
+.rule {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.axisLabel {
+  fill: var(--ink-dim);
+  font-family: inherit;
+  font-size: var(--text-label);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A segment takes its category's colour from the slot class beside this
+   one, which sets `--kind`; a hairline of the card between two segments
+   keeps a stack of kinds reading as parts of one bar. */
+.segment {
+  fill: var(--kind);
+  stroke: var(--plan-surface, var(--page));
+  stroke-width: 1;
+}
+
+/* A record: a small pointer in ink over its week's bar. Not the accent,
+   which is the intervals segment's own red a few pixels below it. */
+.record {
+  fill: var(--ink);
+}
+
+.recordLabel {
+  fill: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  paint-order: stroke;
+  stroke: var(--plan-surface, var(--page));
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  margin-top: auto;
+  list-style: none;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+}
+
+.key li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.swatch {
+  display: block;
+  width: 10px;
+  height: 12px;
+  /* A bar's rounded cap in small: a third of the scale's smallest radius. */
+  border-radius: calc(var(--radius-sm) / 3) calc(var(--radius-sm) / 3) 0 0;
+  background: var(--kind);
+}
+
+.recordSwatch {
+  display: block;
+  width: 0;
+  height: 0;
+  border-top: 6px solid var(--ink);
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+}

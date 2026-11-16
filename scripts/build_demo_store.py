@@ -41,6 +41,8 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
+from activity_analysis.analysis.consistency import week_start
+from activity_analysis.analysis.fitness import vdot
 from activity_analysis.analysis.pipeline import RecomputeResult, recompute
 from activity_analysis.analysis.resample import GAP_STOP, find_gaps
 from activity_analysis.config import INGEST_VERSION, Paths
@@ -60,6 +62,24 @@ from activity_analysis.models import (
     STREAM_SCHEMA,
     Activity,
 )
+from activity_analysis.plan.context import build_context
+from activity_analysis.plan.models import (
+    Assessment,
+    ChangeEntry,
+    Citation,
+    Constraints,
+    Goal,
+    HeartRateRange,
+    Outcome,
+    PlanDraft,
+    PlanVersion,
+    SpeedRange,
+    Step,
+    Week,
+)
+from activity_analysis.plan.models import Session as PlanSession
+from activity_analysis.plan.store import PlanStore
+from activity_analysis.store.db import connect
 from activity_analysis.store.writer import (
     read_activities,
     read_activity_metrics,
@@ -232,6 +252,8 @@ class Summary:
     last_day: date | None = None
     distance_km: float = 0.0
     device_vo2max_days: int = 0
+    plan_goal: str | None = None
+    plan_versions: int = 0
     recompute: RecomputeResult | None = None
     seconds: dict[str, float] = field(default_factory=dict)
 
@@ -906,6 +928,333 @@ def write_device_vo2max(paths: Paths, scratch: Path, rng: np.random.Generator) -
     return len(frame)
 
 
+# --- The training plan -----------------------------------------------------------------
+
+DEMO_GOAL_ID = "demo-10k"
+DEMO_DISTANCE_M = 10_000.0
+#: The plan starts this many whole weeks before the week holding ``--end``, so its
+#: calendar shows runs done as well as sessions to come.
+PLAN_WEEKS_BEFORE = 2
+PLAN_WEEKS = 10
+#: Weeks written session by session, counted from the first; the race week is too.
+PLAN_DETAILED_WEEKS = 4
+#: The long run in the plan's fourth week; it grows 1 km a week either side.
+PLAN_LONG_RUN_M = 18_000.0
+PLAN_EASY_RUN_M = 8000.0
+PLAN_INTERVALS_RUN_M = 9000.0
+#: Runs at least this long count as the week's long run.
+LONG_RUN_FROM_M = 14_000.0
+#: The easy ceiling as a share of the maximum heart rate, used only when the store
+#: has no threshold estimate to take the top of zone 2 from.
+EASY_CEILING_OF_MAX = 0.78
+INTERVAL_REPS = 6
+INTERVAL_REP_M = 800.0
+INTERVAL_RECOVERY_S = 90.0
+WARMUP_M = 2000.0
+#: The days of the week, Monday 0, a future week's five runs fall on.
+TEMPLATE_DAYS = {1: "intervals", 2: "easy", 3: "easy", 5: "easy", 6: "long"}
+
+
+@dataclass
+class _PlanFacts:
+    """What the demo plan reads from the context, in SI."""
+
+    ceiling_bpm: float
+    easy_mps: float
+    race_mps: float
+    estimate_s: float
+    vdot_now: float
+    garmin_now: float | None
+    citations: list[Citation]
+
+
+def _plan_facts(context: dict[str, Any], distance_m: float) -> _PlanFacts:
+    zones = context.get("zones")
+    if zones is not None:
+        ceiling = round(zones["boundaries_bpm"][1])
+    else:
+        ceiling = round(context["profile"]["max_hr_bpm"] * EASY_CEILING_OF_MAX)
+    easy_speeds = [
+        r["avg_speed_mps"]
+        for r in context["recent_runs"]
+        if r["avg_speed_mps"] and "intervals" not in r["tags"] and "all_out" not in r["tags"]
+    ]
+    items = context["predictions"]["items"]
+    index = next(i for i, item in enumerate(items) if item["distance_m"] == distance_m)
+    models = list(enumerate(items[index]["models"]))
+    # The two best-effort models, or the ordinary-runs one on a store with neither.
+    used = [(j, m) for j, m in models if m["source"] == "best_efforts"] or models
+    estimate = float(np.mean([m["predicted_time_s"] for _, m in used]))
+    citations = [
+        Citation(
+            label=f"{m['model'].title()} prediction",
+            pointer=f"/predictions/items/{index}/models/{j}",
+        )
+        for j, m in used
+    ]
+    garmin = context["fitness_now"]["garmin_vo2max"]
+    if garmin is not None:
+        citations.append(Citation(label="Garmin VO2max", pointer="/fitness_now/garmin_vo2max"))
+    return _PlanFacts(
+        ceiling_bpm=float(ceiling),
+        easy_mps=float(np.median(easy_speeds)),
+        race_mps=distance_m / estimate,
+        estimate_s=round(estimate),
+        vdot_now=vdot(distance_m, estimate),
+        garmin_now=garmin,
+        citations=citations,
+    )
+
+
+def _km(distance_m: float) -> str:
+    return f"{distance_m / 1000:g} km"
+
+
+def _plan_session(day: date, kind: str, distance_m: float, facts: _PlanFacts) -> PlanSession:
+    """One session and its steps, with its duration from the paces in ``facts``."""
+    easy_hr = HeartRateRange(high_bpm=facts.ceiling_bpm)
+    rep_speed = facts.race_mps * 1.04
+    if kind == "intervals":
+        cooldown = max(distance_m - WARMUP_M - INTERVAL_REPS * INTERVAL_REP_M, 1000.0)
+        steps = [
+            Step(role="warmup", distance_m=WARMUP_M, heart_rate=easy_hr),
+            Step(
+                role="work",
+                repeat=INTERVAL_REPS,
+                distance_m=INTERVAL_REP_M,
+                speed=SpeedRange(low_mps=rep_speed * 0.98, high_mps=rep_speed * 1.02),
+            ),
+            Step(role="recovery", repeat=INTERVAL_REPS, duration_s=INTERVAL_RECOVERY_S),
+            Step(role="cooldown", distance_m=cooldown, heart_rate=easy_hr),
+        ]
+        duration = (WARMUP_M + cooldown) / facts.easy_mps + INTERVAL_REPS * (
+            INTERVAL_REP_M / rep_speed + INTERVAL_RECOVERY_S
+        )
+        title = f"{INTERVAL_REPS} x {INTERVAL_REP_M:g} m"
+        description = (
+            f"Warm-up:\n- {_km(WARMUP_M)} easy\n\nMain set:\n"
+            f"- {INTERVAL_REPS} x {INTERVAL_REP_M:g} m a little faster than race pace\n"
+            f"- {INTERVAL_RECOVERY_S:g} s jog between\n\nCool-down:\n- {_km(cooldown)} easy"
+        )
+    elif kind == "race":
+        steps = [
+            Step(role="warmup", distance_m=WARMUP_M, heart_rate=easy_hr),
+            Step(role="work", distance_m=distance_m),
+        ]
+        duration = WARMUP_M / facts.easy_mps + distance_m / facts.race_mps
+        title = f"Race: {_km(distance_m)}"
+        description = (
+            "Warm-up:\n- 2 km easy with four strides\n\nRace:\n- Even pace, then race the last 2 km"
+        )
+        distance_m += WARMUP_M
+    else:
+        steps = [Step(role="work", distance_m=distance_m, heart_rate=easy_hr)]
+        duration = distance_m / facts.easy_mps
+        title = "Long run" if kind == "long" else "Easy run"
+        description = (
+            f"Run:\n- {_km(distance_m)} under {facts.ceiling_bpm:.0f} bpm\n\n"
+            f"Feel:\n- {'3-4/10, relaxed all the way' if kind == 'long' else '3/10, chatty'}"
+        )
+    return PlanSession(
+        id=f"{day.isoformat()}-{kind}",
+        date=day,
+        kind=kind,  # type: ignore[arg-type]
+        title=title,
+        description=description,
+        planned_distance_m=round(distance_m, -1),
+        planned_duration_s=round(duration),
+        steps=steps,
+    )
+
+
+def _zone_minutes(sessions: list[PlanSession], facts: _PlanFacts) -> list[float]:
+    """Each running session's minutes split across the zones its steps aim for."""
+    minutes = np.zeros(5)
+    for s in sessions:
+        total = (s.planned_duration_s or 0.0) / 60.0
+        if s.kind == "intervals":
+            work = INTERVAL_REPS * INTERVAL_REP_M / (facts.race_mps * 1.04) / 60.0
+            minutes += [0.5 * (total - work), 0.5 * (total - work), 0.0, 0.5 * work, 0.5 * work]
+        elif s.kind == "race":
+            race = (s.planned_distance_m or 0.0) / facts.race_mps / 60.0
+            race = min(race, total)
+            minutes += [0.5 * (total - race), 0.5 * (total - race), 0.0, 0.6 * race, 0.4 * race]
+        else:
+            minutes += [0.5 * total, 0.5 * total, 0.0, 0.0, 0.0]
+    return [round(float(m), 1) for m in minutes]
+
+
+def _phase(n: int) -> tuple[str, str]:
+    if n < 3:
+        return "base", "Easy volume under the ceiling, one interval session a week"
+    if n < 6:
+        return "build", "Longer long runs and intervals at race pace"
+    if n < 8:
+        return "sharpen", "Race-pace work, volume held"
+    return "taper", "Less volume, the same intensity, arrive fresh"
+
+
+LOAD_NOTES = {
+    "base": "Keep every easy run under the ceiling, so the intervals are the only hard day.",
+    "build": "The long run grows this week: keep the day after it short and easy.",
+    "sharpen": "The intervals carry the week; run them on fresh legs and keep the rest easy.",
+    "taper": "Fatigue falls this week while fitness holds: add nothing, and sleep.",
+}
+
+
+def demo_plan_draft(
+    facts: _PlanFacts, *, end: date, runs: list[dict[str, Any]], long_extra_m: float
+) -> PlanDraft:
+    """The demo's 10 km plan, its paces and estimate from ``facts``.
+
+    The weeks up to ``end`` hold one session per run in ``runs``, so every one of
+    them is done; the rest follow ``TEMPLATE_DAYS``. ``long_extra_m`` lengthens the
+    long runs after ``end``, the change the second version makes. Both versions
+    take the same ``facts``, since a revision may not change a past session.
+    """
+    distance = DEMO_DISTANCE_M
+    start = week_start(end) - timedelta(weeks=PLAN_WEEKS_BEFORE)
+    race_day = start + timedelta(weeks=PLAN_WEEKS, days=-1)
+    target = round(facts.estimate_s * 0.975 / 30.0) * 30.0
+    weeks: list[Week] = []
+    for n in range(PLAN_WEEKS):
+        monday = start + timedelta(weeks=n)
+        phase, focus = _phase(n)
+        detailed = n < PLAN_DETAILED_WEEKS or n == PLAN_WEEKS - 1
+        sessions: list[PlanSession] = []
+        if detailed:
+            for run in runs:
+                day = date.fromisoformat(run["local_date"])
+                if monday <= day <= min(end, monday + timedelta(days=6)):
+                    kind = (
+                        "intervals"
+                        if "intervals" in run["tags"]
+                        else "long"
+                        if run["distance_m"] >= LONG_RUN_FROM_M
+                        else "easy"
+                    )
+                    sessions.append(_plan_session(day, kind, round(run["distance_m"], -2), facts))
+            for offset, kind in TEMPLATE_DAYS.items():
+                day = monday + timedelta(days=offset)
+                if day <= end:
+                    continue
+                if n == PLAN_WEEKS - 1:
+                    if offset == 6:
+                        sessions.append(_plan_session(day, "race", distance, facts))
+                    elif offset in (1, 3):
+                        sessions.append(_plan_session(day, "easy", 5000.0, facts))
+                    continue
+                long_m = PLAN_LONG_RUN_M + 1000.0 * (n - 3) + long_extra_m
+                length = {
+                    "intervals": PLAN_INTERVALS_RUN_M,
+                    "easy": PLAN_EASY_RUN_M,
+                    "long": long_m,
+                }[kind]
+                sessions.append(_plan_session(day, kind, length, facts))
+        planned = (
+            sum(s.planned_distance_m or 0.0 for s in sessions)
+            if detailed
+            else (40_000.0 if phase == "taper" else 52_000.0 + 1500.0 * (n - 4))
+        )
+        zone_minutes = (
+            _zone_minutes(sessions, facts)
+            if detailed
+            else [
+                round(planned / facts.easy_mps / 60.0 * f, 1) for f in (0.45, 0.4, 0.05, 0.07, 0.03)
+            ]
+        )
+        weeks.append(
+            Week(
+                start_date=monday,
+                phase=phase,
+                focus=focus,
+                planned_distance_m=round(planned, -2),
+                detailed=detailed,
+                sessions=sessions,
+                planned_zone_minutes=zone_minutes,
+                expected_vdot=round(facts.vdot_now + 0.15 * n, 1),
+                expected_garmin_vo2max=(
+                    None if facts.garmin_now is None else round(facts.garmin_now + 0.1 * n, 1)
+                ),
+                load_note=LOAD_NOTES[phase] if detailed else None,
+            )
+        )
+    gap = facts.estimate_s - target
+    return PlanDraft(
+        goal=Goal(
+            goal_id=DEMO_GOAL_ID,
+            distance_m=distance,
+            target_time_s=target,
+            race_date=race_day,
+            surface="road",
+        ),
+        constraints=Constraints(runs_per_week=5),
+        assessment=Assessment(
+            summary=(
+                f"Verdict:\n- The target is possible\n- {gap:.0f} s under the current estimate"
+                "\n\nWhere you stand:\n- Recent best efforts put 10 km a little over the target"
+                "\n- Ten weeks of steady training close a gap of this size"
+            ),
+            estimate_s=facts.estimate_s,
+            estimate_reasoning=("Estimate:\n- The mean of the two best-effort models at 10 km"),
+            verdict="possible",
+            citations=facts.citations,
+        ),
+        weeks=weeks,
+    )
+
+
+def write_demo_plan(paths: Paths, end: date) -> PlanVersion:
+    """A 10 km plan, proposed and accepted before its first week, revised and accepted at ``end``.
+
+    Both versions go through ``PlanStore`` and its checks, as ``plan propose``
+    and ``plan accept`` would take them.
+    """
+    store = PlanStore(paths)
+    start = week_start(end) - timedelta(weeks=PLAN_WEEKS_BEFORE)
+    first_day = start - timedelta(days=1)
+    with connect(paths) as con:
+        runs = [
+            r
+            for r in build_context(con, today=end, store=store)["recent_runs"]
+            if start <= date.fromisoformat(r["local_date"]) <= end
+        ]
+        before = build_context(con, today=first_day, store=store)
+    facts = _plan_facts(before, DEMO_DISTANCE_M)
+    first = demo_plan_draft(facts, end=end, runs=runs, long_extra_m=0.0)
+    store.propose(first, before, now=datetime.combine(first_day, datetime.min.time(), UTC))
+    store.accept(DEMO_GOAL_ID)
+
+    with connect(paths) as con:
+        now_context = build_context(con, today=end, store=store)
+    revised = demo_plan_draft(facts, end=end, runs=runs, long_extra_m=2000.0)
+    revised.outcomes = [
+        Outcome(session_id=s.id, verdict="done", activity_ids=[r["activity_id"]])
+        for week in revised.weeks
+        for s in week.sessions
+        for r in runs
+        if s.date <= end and r["local_date"] == s.date.isoformat()
+    ]
+    later_long = [
+        s.id for week in revised.weeks for s in week.sessions if s.kind == "long" and s.date > end
+    ]
+    revised.changes = [
+        ChangeEntry(
+            title="Longer long runs",
+            reason=(
+                "Evidence:\n- Every session of the plan so far was run\n\n"
+                "Change:\n- The long runs still to come go up by 2 km"
+            ),
+            session_ids=later_long,
+        )
+    ]
+    version = store.propose(
+        revised, now_context, now=datetime.combine(end, datetime.min.time(), UTC)
+    )
+    store.accept(DEMO_GOAL_ID)
+    return version
+
+
 # --- The build -------------------------------------------------------------------------
 
 
@@ -999,6 +1348,12 @@ def build(root: Path, *, end: date, weeks: int) -> Summary:
         summary.device_vo2max_days = write_device_vo2max(paths, scratch, rng)
         summary.seconds["device vo2max"] = time.perf_counter() - clock
 
+        clock = time.perf_counter()
+        plan = write_demo_plan(paths, end)
+        summary.plan_goal = plan.goal.goal_id
+        summary.plan_versions = plan.provenance.number
+        summary.seconds["plan"] = time.perf_counter() - clock
+
     stored = read_activities(paths)
     local = stored["start_time_utc"] + pd.to_timedelta(stored["utc_offset_s"].fillna(0), unit="s")
     summary.first_day = local.min().date()
@@ -1032,6 +1387,7 @@ def print_summary(summary: Summary, paths: Paths) -> None:
         f"intervals, {rc.reclassified} reclassified"
     )
     print(f"  device VO2max: {summary.device_vo2max_days} days")
+    print(f"  plan: {summary.plan_goal}, {summary.plan_versions} versions, the last accepted")
     print("  " + ", ".join(f"{step} {s:.1f} s" for step, s in summary.seconds.items()))
 
 

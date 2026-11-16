@@ -84,6 +84,27 @@ export interface TrendSeries {
    * as missing, and the line itself is drawn exactly as any other.
    */
   holdsLastForReadout?: boolean
+  /**
+   * Leave this series out of the y axis's bounds, so the axis is fitted to
+   * the other series alone and this one is drawn against it, its points
+   * beyond the plot cut off at the plot's edge.
+   *
+   * **This is the one exception to "every mark sits inside a labelled
+   * band"**, and it is taken by the VO2max chart's per-run heart rate
+   * points alone, at the maintainer's request of 2026-11-14: they spread
+   * far wider than the two smoothed lines and the Garmin line, so an axis
+   * covering them left the lines - the chart's subject - a fraction of the
+   * plot. Measured on the real store that day over the last 12 months, the
+   * axis covering them spanned 1.51 times the lines' own range, and 28 of
+   * 102 points fall outside the lines' axis. Those points are cut off, never
+   * clamped to the edge, which would draw them at a value they do not have,
+   * and the hover readout still reads every one. The chart's About copy
+   * says so.
+   *
+   * Such a series takes no part in the split into a subject band and a
+   * context strip either: it is never what widens the axis.
+   */
+  ignoredByScale?: boolean
 }
 
 export interface AlignedSeries {
@@ -335,6 +356,21 @@ export function bandRange(scale: AxisScale, from: number, to: number): [number, 
   const span = (scale.max - scale.min) / height
   const min = scale.min - from * span
   return [min, min + span]
+}
+
+/**
+ * The indices of the values inside `[min, max]`, skipping missing ones: the
+ * points a series the scale ignores may draw, since its others lie beyond
+ * the axis.
+ */
+export function indicesWithin(values: ArrayLike<number | null | undefined>, min: number, max: number): number[] {
+  const inside: number[] = []
+  for (let i = 0; i < values.length; i++) {
+    const value = values[i]
+    if (value === null || value === undefined || !Number.isFinite(value)) continue
+    if (value >= min && value <= max) inside.push(i)
+  }
+  return inside
 }
 
 /**

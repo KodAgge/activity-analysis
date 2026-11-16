@@ -52,6 +52,9 @@ MIN_REPS = 3
 EASY_BELOW = 0.75
 STEADY_BELOW = 0.85
 ALL_OUT_ABOVE = 0.90
+#: An all-out run has at least this share of its heart-rate seconds at or
+#: above ALL_OUT_ABOVE of max; `threshold.is_hard` reads one effort the same way.
+ALL_OUT_SHARE = 0.10
 
 #: Heart rate has to cover at least this fraction of the run's seconds before
 #: an effort tag is read from it. Without the guard a run whose optical sensor
@@ -244,7 +247,7 @@ def classify_effort(
     median = float(np.median(hr))
     fraction = median / float(max_hr_bpm)
     above = float((hr >= float(max_hr_bpm) * ALL_OUT_ABOVE).mean())
-    if above >= 0.10:
+    if above >= ALL_OUT_SHARE:
         return Effort(
             "all_out",
             f"{above * 100:.0f}% of the seconds with heart rate recorded at or above "

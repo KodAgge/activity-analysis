@@ -1,0 +1,68 @@
+/*
+ * The week PDF's load block: the table at its own width beside the chart,
+ * stacked on a phone, and Claude's note across the full width under both.
+ * It sits inside the week's card, above the first session, and is kept
+ * whole on one page.
+ */
+.load {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  break-inside: avoid;
+}
+
+@media (min-width: 40rem), print {
+  .load {
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .note {
+    grid-column: 1 / -1;
+  }
+}
+
+.table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th,
+.table td {
+  padding: var(--space-1) var(--space-4) var(--space-1) 0;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table thead th {
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  vertical-align: bottom;
+}
+
+/* The day under its column's name, so the two headers stay narrow. */
+.day {
+  display: block;
+  color: var(--ink);
+}
+
+.table tbody th {
+  text-align: left;
+  font-weight: var(--weight-medium);
+}
+
+.table tbody td {
+  font-weight: var(--weight-bold);
+}
+
+.note {
+  margin: 0;
+  line-height: var(--leading-tight, 1.4);
+}
+
+.chart {
+  display: flex;
+  min-width: 0;
+}

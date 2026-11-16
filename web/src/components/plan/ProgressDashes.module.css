@@ -1,0 +1,49 @@
+/*
+ * Runna's progress dashes, measured with Pillow on the gauntlet's crops
+ * (scales as in `PlanCard.module.css`):
+ *
+ *   Measurement                   device px            pt     here
+ *   --------------------------------------------------------------------
+ *   dash height                   9 (flat), 8, 7       6.1-7  6px
+ *   gap between dashes            3-6 (flat), 4, 5-6   3-5    4px
+ *   ends                          fully rounded               pill
+ *   width                         equal shares of the card's content
+ *   done                          rgb(22,22,22)               --ink
+ *   todo on white                 rgb(194,199,209)     1.70:1 1.70:1
+ *
+ * The todo tone is the measured one: `--chart-rule` and `--border` mixed
+ * half and half is 1.70:1 against `--raised`, Runna's own figure on its
+ * plan card. Runna draws no current dash; ours is `--ink-dim`, which
+ * stands 3.07:1 off done and 3.01:1 off todo, so the three read as three
+ * steps of one ink by lightness, not by hue. Every value is a custom
+ * property, so a caller can recolour its row without a fork.
+ */
+.dashes {
+  --dash-height: calc(var(--space-1) * 1.5);
+  --dash-gap: var(--space-1);
+  --dash-done: var(--ink);
+  --dash-current: var(--ink-dim);
+  --dash-todo: color-mix(in srgb, var(--chart-rule) 50%, var(--border));
+
+  display: flex;
+  gap: var(--dash-gap);
+  min-width: 0;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.dash {
+  flex: 1 1 0;
+  min-width: var(--dash-height);
+  height: var(--dash-height);
+  border-radius: var(--radius-pill);
+  background: var(--dash-todo);
+}
+
+.done {
+  background: var(--dash-done);
+}
+
+.current {
+  background: var(--dash-current);
+}

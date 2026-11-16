@@ -11,6 +11,7 @@ import {
   bandRange,
   dateAxisSplits,
   dateTickLabels,
+  indicesWithin,
   paddedDayRange,
   readoutValue,
   seriesExtent,
@@ -227,6 +228,28 @@ const X_AXIS_SIZE_PX = 22
 const RULE_WIDTH_PX = 1
 
 /**
+ * uPlot's `points.filter` for a line: the index of its value when it has
+ * exactly one, since uPlot draws no path through a single point and the line
+ * would otherwise leave no mark at all; null, drawing no points, otherwise.
+ */
+function lonePoint(u: uPlot, seriesIdx: number): number[] | null {
+  const valued = indicesWithin(u.data[seriesIdx] ?? [], Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY)
+  return valued.length === 1 ? valued : null
+}
+
+/**
+ * uPlot's `points.filter` for a series the scale ignores: the indices of its
+ * points whose value lies inside the series' own scale, so a point beyond
+ * the axis is not drawn at all. See `TrendSeries.ignoredByScale`.
+ */
+function pointsInsideScale(u: uPlot, seriesIdx: number): number[] {
+  const scaleKey = u.series[seriesIdx]?.scale ?? 'y'
+  const scale = u.scales[scaleKey]
+  const values = u.data[seriesIdx] ?? []
+  return indicesWithin(values, scale?.min ?? Number.NEGATIVE_INFINITY, scale?.max ?? Number.POSITIVE_INFINITY)
+}
+
+/**
  * Where the two bands sit, as fractions of the plot's height measured from
  * the bottom: the subject on top, its raw inputs in a strip beneath.
  *
@@ -246,7 +269,10 @@ const RULE_WIDTH_PX = 1
  * Narrowing the axis and letting the scatter fall outside it is not
  * available and must not be tried: `tests/smoke.spec.ts`'s "a trend chart
  * labels a band that contains every mark it draws" is the thing being
- * protected, not an obstacle to route around.
+ * protected, not an obstacle to route around. The one series exempt from
+ * it is the VO2max chart's per-run points, by the maintainer's request and
+ * through `TrendSeries.ignoredByScale`, which draws none of its points
+ * beyond the axis rather than letting them fall outside it.
  *
  * So each band gets a scale fitted to its own series and a ladder of its
  * own, and every mark still sits inside a labelled band - now its own one.
@@ -465,6 +491,10 @@ export function TrendChart({
     const contextRows: number[] = []
     const subjectRows: number[] = []
     series.forEach((s, i) => {
+      // A series the scale ignores is in neither band: it is drawn against
+      // the subject's scale and decides nothing about it. See
+      // `TrendSeries.ignoredByScale`.
+      if (s.ignoredByScale === true) return
       if (s.scatter === true && s.faint === true) contextRows.push(i)
       else subjectRows.push(i)
     })
@@ -472,8 +502,13 @@ export function TrendChart({
       const extent = seriesExtent(aligned, rows)
       return extent === null ? null : axisScale(extent[0], extent[1], maxIntervals)
     }
+    // Every row the scale is fitted to. When the ignored series are the only
+    // ones with a value in view, they set the axis after all: an axis fitted
+    // to nothing would cut off every mark on the plot.
+    const scaledRows = [...subjectRows, ...contextRows]
+    const scaled = seriesExtent(aligned, scaledRows) === null ? undefined : scaledRows
     const subjectExtent = seriesExtent(aligned, subjectRows)
-    const wholeExtent = seriesExtent(aligned)
+    const wholeExtent = seriesExtent(aligned, scaled)
     const widening =
       subjectExtent === null || wholeExtent === null || subjectExtent[1] === subjectExtent[0]
         ? 1
@@ -481,7 +516,7 @@ export function TrendChart({
     const split =
       contextRows.length > 0 && subjectRows.length > 0 && widening >= SPLIT_WHEN_CONTEXT_WIDENS_BY
     if (!split) {
-      const whole = seriesExtent(aligned)
+      const whole = wholeExtent
       return {
         split: false as const,
         subject: whole === null ? axisScale(0, 1) : axisScale(whole[0], whole[1]),
@@ -590,7 +625,16 @@ export function TrendChart({
               // No line at all: the raw points are shown so the smoothing
               // never hides its inputs, not as a second, noisier trend.
               paths: () => null,
-              points: { show: true, size: tone.sizePx, stroke, fill: stroke },
+              points: {
+                show: true,
+                size: tone.sizePx,
+                stroke,
+                fill: stroke,
+                // A series the scale ignores draws only the points inside
+                // the scale. uPlot clips points a whole diameter outside the
+                // plot box, which would paint them over the date labels.
+                ...(s.ignoredByScale === true ? { filter: pointsInsideScale } : {}),
+              },
             }
           }
           if (s.edge === true) {
@@ -617,7 +661,7 @@ export function TrendChart({
             // `tests/phase4.spec.ts` reads off the legend swatches: weight
             // never encodes an ordering here.
             width: LINE_WIDTH_PX,
-            points: { show: false },
+            points: { show: false, filter: lonePoint, stroke, fill: stroke },
           }
         }),
       ],

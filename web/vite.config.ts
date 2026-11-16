@@ -30,6 +30,13 @@ export default defineConfig({
     // take about 0.4 s run alone and passed the 5 s default in two full runs
     // of 1374 tests, each time a different file's.
     testTimeout: 20_000,
+    // Half the cores, not Vitest's default of one worker per core. Measured
+    // 2026-11-16 on 16 cores and 7 GB of memory, 1940 tests: at the default
+    // the jsdom workers starve each other, a Plan test that takes 1.2 s alone
+    // took 24 s and failed the timeout above, and 3 tests failed in one of
+    // two runs; at 8 workers the slowest test took 1.8 s and the suite took
+    // 39 s rather than 87 s.
+    maxWorkers: '50%',
     // Every unit and component test in this project is named `*.test.ts(x)`
     // under `src/`. Vitest's own default `include` also matches `*.spec.ts`,
     // which is exactly what `tests/smoke.spec.ts` (Playwright's end-to-end

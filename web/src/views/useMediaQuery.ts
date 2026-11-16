@@ -8,6 +8,13 @@ import { useCallback, useSyncExternalStore } from 'react'
  */
 export const DESKTOP_LAYOUT_QUERY = '(min-width: 60rem)'
 
+/**
+ * The desktop layout, or a printed page. A printed A4 page is narrower than
+ * `DESKTOP_LAYOUT_QUERY`, so a view that draws a grid on desktop and a list
+ * on a phone asks this instead to keep its grid on paper.
+ */
+export const DESKTOP_OR_PRINT_QUERY = `${DESKTOP_LAYOUT_QUERY}, print`
+
 /** Whether `query` matches now, re-rendering the caller when that changes. */
 export function useMediaQuery(query: string): boolean {
   const subscribe = useCallback(

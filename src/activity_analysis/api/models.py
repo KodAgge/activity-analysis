@@ -12,6 +12,8 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, Field, model_validator
 
+from activity_analysis.plan.models import GoalStatus, PlanVersion, VersionStatus
+
 
 def _to_utc(value: datetime) -> datetime:
     """Pin an instant to UTC, whatever timezone it arrived in.
@@ -121,6 +123,14 @@ class ActivitySummary(BaseModel):
     #: cannot be one either. See ``queries.PR_DISTANCE_KEYS_FROM`` for why
     #: that matters concretely.
     pr_distance_keys: list[str]
+    #: The analysis layer's tags on this activity, each name once: the
+    #: effort classification first (``easy``, ``steady``, ``intervals`` or
+    #: ``all_out``), then the flags by name, such as ``long_run``. ``pr`` is
+    #: left out, since ``pr_distance_keys`` carries it with its distances.
+    #: Empty for an activity with no tags, which every non-running one is.
+    #: ``GET /api/activities/{activity_id}``'s ``derived.tags`` has each
+    #: tag's reasoning.
+    effort_tags: list[str]
 
 
 class Record(BaseModel):
@@ -673,6 +683,85 @@ class Fitness(BaseModel):
     device: list[DeviceVo2maxPoint]
 
 
+class ThresholdNow(BaseModel):
+    """The threshold in force at the newest run and the zones it implies."""
+
+    lthr_bpm: float
+    #: Upper edges of zones 1 to 4, bpm; zone 5 has no upper edge.
+    boundaries_bpm: list[float]
+
+
+class Threshold(BaseModel):
+    """The estimated lactate threshold heart rate in force at the newest run.
+
+    ``current`` is null until three readings exist.
+    """
+
+    current: ThresholdNow | None
+
+
+class LoadDay(BaseModel):
+    """One local day of training load, zero on a rest day."""
+
+    local_date: date
+    trimp: float
+    #: The 42 and 7 day exponentially weighted averages of ``trimp``, fitness
+    #: and fatigue, and their difference, form; see the load reference.
+    ctl: float
+    atl: float
+    form: float
+    #: The day's run distance and the sum over the 7 days ending that day.
+    distance_m: float
+    distance_7d_m: float
+
+
+class LoadWeek(BaseModel):
+    """One Monday-started week of the daily series."""
+
+    week_start: date
+    #: How many of the week's days the series holds, under 7 only at its ends.
+    days: int
+    trimp: float
+    ctl_mean: float
+    atl_mean: float
+    form_mean: float
+    distance_m: float
+
+
+class RunLoad(BaseModel):
+    """One run's load, estimated zone time and heart rate histogram."""
+
+    activity_id: str
+    local_date: date
+    #: The threshold in force at the run, null before the first estimate.
+    lthr_bpm: float | None
+    #: Banister's TRIMP. Null for a run with no heart rate.
+    trimp: float | None
+    #: The resting and maximum heart rate in force on the run's day, the ones
+    #: its TRIMP is weighed by. Present for a run with no heart rate too; null
+    #: only when neither a measurement nor a device setting covers the day.
+    rest_bpm: float | None
+    max_bpm: float | None
+    #: Whether each is the device setting rather than a measurement. False
+    #: when the value is null, since no setting stood in.
+    rest_from_setting: bool
+    max_from_setting: bool
+    #: Seconds in estimated zones 1 to 5; empty for a run with no heart rate.
+    zone_seconds: list[float]
+    #: Parallel lists: whole bpm ascending, and the seconds spent at each.
+    hr_bpm: list[int]
+    hr_seconds: list[float]
+
+
+class TrainingLoad(BaseModel):
+    """Daily and weekly load and the runs behind it, within the requested local dates."""
+
+    days: list[LoadDay]
+    #: Weeks whose ``week_start`` is within the same inclusive dates.
+    weeks: list[LoadWeek]
+    runs: list[RunLoad]
+
+
 class RaceModel(BaseModel):
     """One model's prediction at one distance."""
 
@@ -976,3 +1065,40 @@ class Territory(BaseModel):
     regions: list[TerritoryRegion]
     territory: TerritoryFeatureCollection
     growth: list[TerritoryGrowthPoint]
+
+
+class PlanSummary(BaseModel):
+    """One goal in the list, its figures from the version that speaks for it.
+
+    That is the pending version, else the accepted one, else the newest: a
+    revision may change the goal, and a rejected or withdrawn one never
+    described it.
+    """
+
+    goal_id: str
+    status: GoalStatus
+    distance_m: float
+    target_time_s: float
+    race_date: date
+    accepted_version: int | None
+    pending_version: int | None
+
+
+class Plans(BaseModel):
+    """Every goal, newest first. Empty when no plan was ever proposed."""
+
+    items: list[PlanSummary]
+
+
+class PlanVersionEntry(BaseModel):
+    number: int
+    status: VersionStatus
+    plan: PlanVersion
+
+
+class PlanDetail(BaseModel):
+    """One goal with every version it has had, oldest first."""
+
+    goal_id: str
+    status: GoalStatus
+    versions: list[PlanVersionEntry]

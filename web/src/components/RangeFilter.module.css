@@ -32,7 +32,7 @@
 
 .readout {
   color: var(--ink);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: proportional-nums;
 }
 
 /*

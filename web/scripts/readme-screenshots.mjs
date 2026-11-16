@@ -39,6 +39,21 @@ async function referenceRun() {
   return run.activity_id
 }
 
+/**
+ * The demo store's training plan, and the day its newest version's data runs
+ * through: the Plan view reads the browser's date for its current week, so the
+ * clock is set to that day rather than left on the calendar's.
+ */
+async function demoPlan() {
+  const response = await fetch(`${BASE}/api/plans`)
+  const plans = await response.json()
+  const goal = plans.items?.[0]
+  if (goal === undefined) throw new Error('the store has no plan: is it the demo store?')
+  const detail = await (await fetch(`${BASE}/api/plans/${goal.goal_id}`)).json()
+  const newest = detail.versions[detail.versions.length - 1]
+  return { goalId: goal.goal_id, day: newest.plan.provenance.data_through }
+}
+
 /** The demo store's busiest route, read from the server rather than named. */
 async function busiestRoute() {
   const response = await fetch(`${BASE}/api/routes`)
@@ -51,12 +66,13 @@ async function busiestRoute() {
 /**
  * Each screen's path; whether it draws a map, which loads after the page
  * settles, since the map's own style switch appears only once MapLibre has
- * fired `load`; and the section heading to scroll to the top first, when
- * the view's opening section is not the one worth showing.
+ * fired `load`; the section heading to scroll to the top first, when
+ * the view's opening section is not the one worth showing; and the browser's
+ * date, for a view that reads it.
  */
 const SCREENS = {
   // The view's reason for existing, rather than the VO2max chart it opens on.
-  trends: { path: () => '/trends', section: 'Heart rate at the reference paces' },
+  trends: { path: () => '/trends?period=all', section: 'Heart rate at the reference paces' },
   overview: { path: () => '/' },
   activity: { path: async () => `/activities/${await referenceRun()}`, map: true },
   progression: { path: () => '/progression?distance=5k' },
@@ -65,6 +81,10 @@ const SCREENS = {
   // pace spreads, and the years show the trend.
   distributions: { path: () => '/distributions?variable=pace&compare=years' },
   territory: { path: () => '/territory', map: true },
+  plan: {
+    path: async () => `/plan/${(await demoPlan()).goalId}`,
+    clock: async () => new Date(`${(await demoPlan()).day}T12:00:00`),
+  },
 }
 
 const wanted = process.argv.slice(2)
@@ -77,7 +97,6 @@ const context = await browser.newContext({
   deviceScaleFactor: 2,
   colorScheme: 'light',
 })
-const page = await context.newPage()
 
 for (const name of names) {
   const screen = SCREENS[name]
@@ -86,6 +105,9 @@ for (const name of names) {
     process.exitCode = 1
     continue
   }
+  // A page per screen, so one screen's fixed clock does not reach the next.
+  const page = await context.newPage()
+  if (screen.clock) await page.clock.setFixedTime(await screen.clock())
   await page.goto(`${BASE}${await screen.path()}`, { waitUntil: 'networkidle' })
   if (screen.map) {
     await page.getByRole('radiogroup', { name: 'Map style' }).first().waitFor({ timeout: 60_000 })
@@ -100,6 +122,7 @@ for (const name of names) {
   const file = `${OUT}${name}.${screen.map ? 'jpg' : 'png'}`
   await page.screenshot(screen.map ? { path: file, type: 'jpeg', quality: 85 } : { path: file })
   console.log(`${file} ${Math.round((await stat(file)).size / 1024)} KiB`)
+  await page.close()
 }
 
 await browser.close()

@@ -266,15 +266,19 @@ def cameron(known_distance_m: float, known_time_s: float, target_distance_m: flo
     return target_pace * target_distance_m
 
 
-#: Calibration of the heart-rate VO2max onto the VDOT scale, fitted in
-#: exploratory work on 2026-09-05 over 150 points of that
-#: exploratory estimator that had a smoothed estimate and at least two
-#: eligible 5 km efforts within 42 days: VDOT = 0.510 * VO2hr + 11.60,
-#: r = 0.528, residual SD 2.37 VDOT units.
+#: Calibration of the heart-rate VO2max onto the VDOT scale, fitted on
+#: 2026-11-14 against the ``fitness_series`` this module writes, so on the
+#: shipped ``hr_vo2max``. One least-squares regression of the VDOT of the
+#: fastest eligible 5 km in the 42 days up to a run on that run's
+#: ``hr_vo2max_smoothed``, over every run that has a smoothed estimate and at
+#: least two eligible 5 km efforts in those 42 days: 188 points,
+#: VDOT = 0.586 * VO2hr + 5.92, r = 0.597, residual SD 2.30 VDOT units.
+#: docs/reference/math/predictions.md, "The calibration", has the selection
+#: and the reproduction.
 #:
-#: It has not been refitted against the estimator implemented here, which
-#: also qualifies 150 runs but reads slightly higher at the median and
-#: about twice as much higher at the maximum.
+#: It replaced a fit made during design on an exploratory estimator. Applied
+#: to these points that fit put VDOT 1.64 units too high on average, so the
+#: refit moved every ordinary-run prediction slower.
 #:
 #: **This is a different thing from calibrating the reported VO2max.** That
 #: was considered and rejected: it would adjust a headline number using an
@@ -283,11 +287,13 @@ def cameron(known_distance_m: float, known_time_s: float, target_distance_m: flo
 #: against the athlete's own recorded efforts, and it reports its own
 #: residual. The reported VO2max stays raw.
 #:
-#: The slope of 0.510 is itself a finding: the heart-rate estimate moves
-#: about twice as fast as measured performance does.
-ORDINARY_RUN_CALIBRATION_SLOPE = 0.510
-ORDINARY_RUN_CALIBRATION_INTERCEPT = 11.60
-ORDINARY_RUN_RESIDUAL_VDOT = 2.37
+#: The slope is not a scale factor between the two. It is r times the ratio
+#: of their standard deviations, and over these points that ratio is 0.98,
+#: so a slope below 1 is the scatter between the two series, not the
+#: heart-rate estimate moving faster than performance.
+ORDINARY_RUN_CALIBRATION_SLOPE = 0.586
+ORDINARY_RUN_CALIBRATION_INTERCEPT = 5.92
+ORDINARY_RUN_RESIDUAL_VDOT = 2.30
 
 
 @dataclass(frozen=True)
@@ -455,6 +461,27 @@ def _race_model(
     }
 
 
+def prediction_anchor(recent_efforts: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The effort both best-effort race models extrapolate from, or ``None``.
+
+    The recent eligible effort with the highest VDOT, because that is the
+    athlete's best recent performance under a scale that puts every distance
+    on one footing. Only efforts of at least ``MIN_PREDICTION_DISTANCE_M``
+    with a positive time count. Separate from ``race_predictions`` so the
+    training plan's context can name the effort a prediction came from by
+    the same rule, rather than by a copy of it that could drift.
+    """
+    usable = [
+        effort
+        for effort in recent_efforts
+        if float(effort["distance_m"]) >= MIN_PREDICTION_DISTANCE_M
+        and float(effort["elapsed_time_s"]) > 0.0
+    ]
+    if not usable:
+        return None
+    return max(usable, key=lambda e: vdot(float(e["distance_m"]), float(e["elapsed_time_s"])))
+
+
 def race_predictions(
     recent_efforts: list[dict[str, Any]], hr_vo2max_smoothed: float | None
 ) -> dict[str, object]:
@@ -472,10 +499,9 @@ def race_predictions(
     shape of ``api.models.Predictions`` as plain containers, so the router
     only validates.
 
-    Both best-effort models are anchored on one effort, the recent eligible
-    effort with the highest VDOT, because that is the athlete's best recent
-    performance under a scale that puts every distance on one footing. The
-    calibrated ordinary-run prediction stands beside them with its band.
+    Both best-effort models are anchored on one effort,
+    ``prediction_anchor``'s. The calibrated ordinary-run prediction stands
+    beside them with its band.
 
     No model is fitted across the per-distance bests. Critical speed was, and
     it was removed on 2026-10-06: the window's bests are windows inside
@@ -487,19 +513,11 @@ def race_predictions(
     model, and ``reason`` says which and why, so an absence in ``models`` is
     never silent.
     """
-    usable = [
-        effort
-        for effort in recent_efforts
-        if float(effort["distance_m"]) >= MIN_PREDICTION_DISTANCE_M
-        and float(effort["elapsed_time_s"]) > 0.0
-    ]
     estimate = float("nan") if hr_vo2max_smoothed is None else float(hr_vo2max_smoothed)
     missing: list[str] = []
 
-    anchor: dict[str, Any] | None = None
-    if usable:
-        anchor = max(usable, key=lambda e: vdot(float(e["distance_m"]), float(e["elapsed_time_s"])))
-    else:
+    anchor = prediction_anchor(recent_efforts)
+    if anchor is None:
         missing.append(
             "no eligible best effort of at least 1 km in the last "
             f"{PREDICTION_WINDOW_DAYS} days of the history, so the best-effort models "

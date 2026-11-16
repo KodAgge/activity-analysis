@@ -1,0 +1,141 @@
+/*
+ * The page frame: cards on the grey ground (`PlanCard`), one under the
+ * next. Measured with Pillow on the gauntlet's Runna crops, at the scales
+ * `PlanCard.module.css` records:
+ *
+ *   Measurement                  device px       pt     here
+ *   -----------------------------------------------------------------
+ *   gap between two cards        23 (flat)       15.6   16px
+ *                                20 (today)      17.4
+ *   card edge to screen edge     23.5 (flat)     16     16px
+ *                                19.5 (today)    17
+ *
+ * Runna's ground, rgb(242,245,246), is a step lighter than `--page`; the
+ * page stays on `--page` so the plan sits on the ground every other view
+ * has, which only sharpens the white card's edge.
+ *
+ * On a phone the cards sit 16px from the screen's edges, Runna's gutter,
+ * so the page cancels the part of the shell's 24px gutter beyond it; a
+ * card's own 16px padding then puts its text 32px in, where Runna's is.
+ * Screen only: paper has no gutter to cancel. On a desktop the shell's
+ * gutter stays and the gap grows a step with the card's padding.
+ *
+ * `--plan-gap` is the one gap of the page, between cards and between the
+ * columns of a `PlanGrid`. `--plan-surface` is the ground a chart's label
+ * halo or hollow point knocks out against: the page here, the card's white
+ * inside one.
+ */
+.plan {
+  --plan-gap: var(--space-4);
+  --plan-surface: var(--page);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--plan-gap);
+}
+
+@media screen and (max-width: 59.99rem) {
+  .plan {
+    margin-inline: calc(var(--space-4) - var(--gutter));
+  }
+}
+
+@media (min-width: 60rem) {
+  .plan {
+    --plan-gap: var(--space-6);
+  }
+}
+
+.dim {
+  color: var(--ink-dim);
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.link {
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/* An older version is on screen while a proposal waits: a slim card above
+   the header, a dim `Proposed` tag before the link to the proposal. Ink
+   only, since the page's one saturated colour per workout kind is never a
+   notice's. */
+.pendingNotice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--text-small);
+  line-height: var(--leading-body);
+}
+
+.pendingTag {
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/*
+ * The plan on paper: the maintainer carries it on a phone as a PDF the
+ * browser's print dialog saves, short or long (`printPlan`; the long one's
+ * extra sections are gated in their own stylesheets). A4 portrait with
+ * 12mm margins; colours
+ * print, since the calendar's kind colours and the charts carry meaning;
+ * and the page's links print as plain rows, with no hover wash.
+ */
+@page {
+  size: A4 portrait;
+  margin: 12mm;
+}
+
+@media print {
+  .plan {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .plan svg {
+    max-width: 100%;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .plan a {
+    text-decoration: none;
+  }
+
+  .plan a:hover {
+    background: transparent;
+  }
+
+  /* A section's heading never ends a page, and a chart never splits. */
+  .plan h2,
+  .plan h3 {
+    break-after: avoid;
+  }
+
+  .plan svg,
+  .plan figure {
+    break-inside: avoid;
+  }
+
+  /* The week PDF is the header and the next week's sessions: every other
+     part of the page is left off the paper (`printPlan`'s `week` mode). */
+  :global(:root[data-plan-print='week']) .plan > :not([data-plan-week]) {
+    display: none;
+  }
+
+  /* So is the shell's store caption under the page, which says nothing
+     about the week and on the e2e plan spilled onto a third, blank page. */
+  :global(:root[data-plan-print='week'] footer) {
+    display: none;
+  }
+}

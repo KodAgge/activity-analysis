@@ -138,7 +138,7 @@
 .placeArea {
   color: var(--ink-dim);
   font-weight: var(--weight-medium);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: proportional-nums;
 }
 
 /* The chosen place, zoomed out from: its name in the accent, as a chosen pill's. */

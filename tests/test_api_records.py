@@ -429,7 +429,7 @@ class TestPersonalRecordKeyOrdering:
 
     @staticmethod
     def _store() -> duckdb.DuckDBPyConnection:
-        """The four relations `SUMMARY_FROM` reads, with the real column shapes."""
+        """The relations `SUMMARY_FROM` reads, with the columns it reads of each."""
         con = duckdb.connect()
         con.execute(
             """
@@ -445,7 +445,9 @@ class TestPersonalRecordKeyOrdering:
             CREATE TABLE activity_metrics (
                 activity_id VARCHAR, moving_time_s DOUBLE, avg_speed_mps DOUBLE
             );
-            CREATE TABLE activity_tags (activity_id VARCHAR, tag VARCHAR, distance_key VARCHAR);
+            CREATE TABLE activity_tags (
+                activity_id VARCHAR, tag VARCHAR, distance_key VARCHAR, kind VARCHAR
+            );
             CREATE TABLE best_efforts (
                 activity_id VARCHAR, distance_key VARCHAR, distance_m DOUBLE
             );
@@ -473,7 +475,7 @@ class TestPersonalRecordKeyOrdering:
         """The shape of that real run: a 1k and a 10k on one run."""
         con = self._store()
         for key, metres in [("1k", 1000.0), ("10k", 10000.0)]:
-            con.execute("INSERT INTO activity_tags VALUES ('run-1', 'pr', ?)", [key])
+            con.execute("INSERT INTO activity_tags VALUES ('run-1', 'pr', ?, 'flag')", [key])
             con.execute("INSERT INTO best_efforts VALUES ('run-1', ?, ?)", [key, metres])
 
         # Alphabetically this is ['10k', '1k']; by distance it is ['1k', '10k'].
@@ -492,7 +494,7 @@ class TestPersonalRecordKeyOrdering:
             ("1mi", 1609.344),
             ("1k", 1000.0),
         ]:
-            con.execute("INSERT INTO activity_tags VALUES ('run-1', 'pr', ?)", [key])
+            con.execute("INSERT INTO activity_tags VALUES ('run-1', 'pr', ?, 'flag')", [key])
             con.execute("INSERT INTO best_efforts VALUES ('run-1', ?, ?)", [key, metres])
 
         assert self._keys(con) == ["400m", "1k", "1mi", "3k"]
@@ -509,8 +511,8 @@ class TestPersonalRecordKeyOrdering:
         must still report no records.
         """
         con = self._store()
-        con.execute("INSERT INTO activity_tags VALUES ('run-1', 'long_run', NULL)")
-        con.execute("INSERT INTO activity_tags VALUES ('run-1', 'intervals', NULL)")
+        con.execute("INSERT INTO activity_tags VALUES ('run-1', 'long_run', NULL, 'flag')")
+        con.execute("INSERT INTO activity_tags VALUES ('run-1', 'intervals', NULL, 'flag')")
         assert self._keys(con) == []
 
     def test_a_distance_keyed_tag_that_is_not_a_record_is_still_excluded(self):
@@ -534,8 +536,8 @@ class TestPersonalRecordKeyOrdering:
         # A real record, and a hypothetical future distance-keyed tag that is
         # not one - both with a matching effort row, so the join keeps both
         # and only the filter can separate them.
-        con.execute("INSERT INTO activity_tags VALUES ('run-1', 'pr', '5k')")
-        con.execute("INSERT INTO activity_tags VALUES ('run-1', 'course_best', '1k')")
+        con.execute("INSERT INTO activity_tags VALUES ('run-1', 'pr', '5k', 'flag')")
+        con.execute("INSERT INTO activity_tags VALUES ('run-1', 'course_best', '1k', 'flag')")
         con.execute("INSERT INTO best_efforts VALUES ('run-1', '5k', 5000.0)")
         con.execute("INSERT INTO best_efforts VALUES ('run-1', '1k', 1000.0)")
 
@@ -549,8 +551,8 @@ class TestPersonalRecordKeyOrdering:
         "null", which is worse than the key being absent.
         """
         con = self._store()
-        con.execute("INSERT INTO activity_tags VALUES ('run-1', 'pr', '5k')")
-        con.execute("INSERT INTO activity_tags VALUES ('run-1', 'pr', '1k')")
+        con.execute("INSERT INTO activity_tags VALUES ('run-1', 'pr', '5k', 'flag')")
+        con.execute("INSERT INTO activity_tags VALUES ('run-1', 'pr', '1k', 'flag')")
         con.execute("INSERT INTO best_efforts VALUES ('run-1', '1k', 1000.0)")
         assert self._keys(con) == ["1k"]
 
@@ -566,7 +568,7 @@ class TestPersonalRecordKeyOrdering:
         whole point of the join.
         """
         con = self._store()
-        con.execute("INSERT INTO activity_tags VALUES ('run-1', 'pr', '5k')")
+        con.execute("INSERT INTO activity_tags VALUES ('run-1', 'pr', '5k', 'flag')")
         con.execute("INSERT INTO best_efforts VALUES ('run-1', '5k', 5000.0)")
         # Nothing in the schema forbids a second row, so the guarantee is
         # asserted where it is relied on rather than assumed.

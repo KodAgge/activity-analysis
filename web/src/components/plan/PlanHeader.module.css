@@ -1,0 +1,369 @@
+/*
+ * The plan's header: three cards in the shape of Runna's plan home
+ * (the gauntlet's `plan-home-light`, `plan-home-flat` and `estimate`
+ * crops), the plan, the estimated race time and the actions.
+ *
+ * Measured on those crops, at the scales `PlanCard.module.css` records:
+ * the plan title is a bold face about twice the card label's cap, the
+ * facts under it sit 4-6 pt apart with an icon each, the dashes run the
+ * card's width 16-20 pt under the facts, and the `Weeks completed` and
+ * `Distance` pair stands 12 pt under the dashes, a dim label over a bold
+ * value, one at each end of the line. The action buttons are 44 pt
+ * circles, a name of one or two short lines under each, four across.
+ */
+.header {
+  min-width: 0;
+}
+
+/* The plan card, four layers as Runna's: the goal, the strip, then the
+   weeks completed against the countdown. */
+.plan {
+  display: grid;
+  grid-template-areas:
+    'goal'
+    'strip'
+    'counts';
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+}
+
+.goal {
+  grid-area: goal;
+}
+
+.strip {
+  grid-area: strip;
+}
+
+.counts {
+  grid-area: counts;
+}
+
+.goal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.title {
+  overflow-wrap: anywhere;
+}
+
+/* The race's facts, an icon before each, as Runna lists a plan's facts. */
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink);
+  font-size: var(--text-small);
+  line-height: var(--leading-tight);
+}
+
+/* One fact, kept whole, so a phone breaks between two facts rather than
+   inside `Target pace 4:30/km`. */
+.fact {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+.factIcon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--ink-dim);
+}
+
+/* In place of the countdown once the race is over: something to do, so ink. */
+.passed {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--text-small);
+  line-height: var(--leading-body);
+}
+
+/* The weeks completed at one end of the line, the countdown at the other. */
+.counts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-6);
+  margin: 0;
+}
+
+.count {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.countEnd {
+  margin-left: auto;
+  text-align: right;
+}
+
+/* Runna's dim label over a bold value. */
+.label {
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+}
+
+.value {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--text-stat-lg);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  letter-spacing: -0.01em;
+}
+
+/* The sentence that stands in for a missing estimate: a value, but read as
+   a line rather than a number. */
+.valueSentence {
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  letter-spacing: 0;
+}
+
+/* The estimate card: the two times side by side, on one baseline even
+   where one label wraps onto a second line. */
+.estimates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: end;
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.estimatesStacked {
+  grid-template-columns: 1fr;
+}
+
+.estimateItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* Who made the estimate and from which runs: a dim caption at the
+   estimate card's foot, under a hairline, as Runna closes its estimate
+   card with a line under a rule. */
+.provenance {
+  margin: var(--space-4) 0 0;
+  padding-top: var(--space-3);
+  border-top: var(--hairline);
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  line-height: var(--leading-body);
+  text-wrap: pretty;
+}
+
+/* One sentence of the provenance: run on with the other on a phone. */
+.sentenceLine {
+  display: inline;
+}
+
+/* The data's age, the one part of the line that asks for an ingest: ink and
+   bold against the dim line, never a colour of the workout kinds. */
+.stale {
+  color: var(--ink);
+  font-weight: var(--weight-bold);
+}
+
+/* The groups side by side, one column each, on two shared lines: the
+   names, then the buttons, so both names sit on one baseline and every
+   circle on one line, as Runna's four circles sit on one. */
+.actions {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  grid-template-rows: auto auto;
+  gap: var(--space-2) var(--space-4);
+}
+
+/* A pair of buttons: the plan's PDFs, the next week's. */
+.group {
+  display: grid;
+  grid-row: 1 / span 2;
+  grid-template-rows: subgrid;
+  min-width: 0;
+}
+
+/* A pair's name centred over it, a hairline under it spanning both
+   buttons, so the four circles read as two pairs: the plan's PDFs and the
+   week's. The column gap keeps the two hairlines apart. */
+.groupLabel {
+  grid-row: 1;
+  padding-bottom: var(--space-1);
+  border-bottom: var(--hairline);
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  text-align: center;
+}
+
+.buttons {
+  display: grid;
+  grid-row: 2;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+/* One round action: the circle over its name, the whole of it the button.
+   The circle is drawn in ink, as `plan-home-flat` draws it, so it reads
+   as a button against the white card rather than as a disabled one. */
+.action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.circle {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  box-sizing: border-box;
+  border: 1.5px solid var(--ink);
+  border-radius: var(--radius-pill);
+  background: var(--raised);
+  transition: background-color 120ms ease;
+}
+
+.action:hover .circle {
+  background: color-mix(in srgb, var(--ink) 8%, var(--raised));
+}
+
+.action:focus-visible {
+  outline: none;
+}
+
+.action:focus-visible .circle {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.actionIcon {
+  width: 22px;
+  height: 22px;
+}
+
+.actionLabel {
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  text-align: center;
+  text-wrap: balance;
+}
+
+/* On a desktop the plan card takes the header's whole width, the goal
+   and its counts side by side over a strip that runs the width, as a
+   wide screen's banner; under it the estimate and the actions are two
+   halves, each as tall as its own content, so the action card is not
+   stretched around its one row of circles. Halves rather than
+   `PlanGrid`'s thirds give the action card the width to set its four
+   names on one line each. This overrides `PlanGrid`'s columns, which the
+   page's desktop composition is to decide. */
+@media (min-width: 60rem) {
+  .header .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  /* A desktop's half is wide enough for the provenance at the note's
+     size, one sentence to a line. */
+  .provenance {
+    font-size: var(--text-small);
+  }
+
+  .sentenceLine {
+    display: block;
+  }
+
+  .plan {
+    grid-column: 1 / -1;
+    grid-template-areas:
+      'goal counts'
+      'strip strip';
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-6) var(--space-10);
+  }
+
+  .counts {
+    align-self: start;
+    gap: var(--space-10);
+  }
+
+  /* A step larger, as the strip's dashes are, in a half twice a phone's
+     card wide. */
+  .circle {
+    width: 3.5rem;
+    height: 3.5rem;
+  }
+
+  .actionIcon {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* The names under the circles at the body's small size, as the facts
+     grow a step: at the label's size they were the faintest text in a
+     card twice a phone's width. Two short lines where a name needs them,
+     as Runna's are. */
+  .actionLabel {
+    font-size: var(--text-small);
+  }
+
+  .facts {
+    font-size: var(--text-body);
+  }
+
+  .factIcon {
+    width: 20px;
+    height: 20px;
+  }
+
+}
+
+/*
+ * On paper: no buttons, and the plan and the estimate side by side rather
+ * than stacked as `PlanGrid` stacks cards on paper, since neither holds a
+ * chart measured at the screen's width and side by side keeps the header
+ * short enough for the week PDF's two pages. The plan card's phase strip
+ * is left off the week PDF, which is about the one week.
+ */
+@media print {
+  .actionsCard {
+    display: none;
+  }
+
+  .header .grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+  }
+
+  .plan {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  :global(:root[data-plan-print='week']) .strip {
+    display: none;
+  }
+}

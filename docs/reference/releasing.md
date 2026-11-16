@@ -8,7 +8,7 @@ Users install the wheel with `uv tool install`, so they need neither Node nor a 
 
 - `install.sh` and `install.ps1` ask GitHub's API for the latest release and install the first `.whl` attached to it.
   A release must therefore carry exactly one wheel, and a release meant for nobody yet must be a draft or a pre-release, which `releases/latest` skips.
-- The README's "Step by step" names one release's wheel URL, with its version twice: in the tag, `v0.1.0`, and in the file name, `activity_analysis-0.1.0-py3-none-any.whl`.
+- The README's "Installing step by step instead" names one release's wheel URL, with its version twice: in the tag, `v0.1.0`, and in the file name, `activity_analysis-0.1.0-py3-none-any.whl`.
 - A newer wheel URL passed to `uv tool install` replaces the installed app, and the same URL again is a no-op.
   `uv tool upgrade` does nothing for an app installed from a URL, so the README does not offer it.
 

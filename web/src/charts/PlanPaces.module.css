@@ -1,0 +1,177 @@
+/*
+ * The target pace chart. Sized as `PlanVolume.module.css` sizes its own:
+ * the column's width, and the height the measured viewBox gives it.
+ */
+.chart {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.panel {
+  width: 100%;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* Runna's grid: faint rules the marks stand in front of. */
+.rule {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.axisLabel {
+  fill: var(--ink-dim);
+  font-family: inherit;
+  font-size: var(--text-label);
+  /* Proportional: tabular figures space out the period and colon, `34 . 5`, `22 : 00`. */
+  font-variant-numeric: proportional-nums;
+}
+
+/* The easy range: the easy slot's colour, faint, so it is ground rather than a mark. */
+.easy {
+  fill: var(--kind);
+  opacity: 0.22;
+}
+
+.easyLabel {
+  fill: var(--ink-dim);
+  font-family: inherit;
+  font-size: var(--text-label);
+}
+
+/* A plan week's edge and the frame's top: Runna's dashed column rule. */
+.column,
+.frameTop {
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+/* The plot's floor, a shade firmer than the rules, which "Slower" names. */
+.baseline {
+  stroke: var(--chart-rule);
+  stroke-width: 1;
+}
+
+/* "Faster" on the frame's top and "Slower" on its floor, Runna's direction
+   words, alone at the ladder's ends: the numbers stand inside them. */
+.direction {
+  fill: var(--ink-dim);
+  font-family: inherit;
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+}
+
+.race {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+/* The goal, the one line on the panel the reader measures against, as the
+   trajectory's target: ink, since red here is the intervals' own colour. */
+.goal {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.goalLabel {
+  fill: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  paint-order: stroke;
+  stroke: var(--plan-surface, var(--page));
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+/* A step's range, in its session's kind colour from the slot class around
+   it: a pale capsule between a solid faster end and a light slower end,
+   Runna's fastest and slowest rep dots. */
+.pace {
+  fill: color-mix(in srgb, var(--kind) 22%, var(--plan-surface, var(--page)));
+}
+
+.fastEnd {
+  fill: var(--kind);
+}
+
+.slowEnd {
+  fill: color-mix(in srgb, var(--kind) 50%, var(--plan-surface, var(--page)));
+}
+
+/* A range's paces, haloed so one that lands on a rule or the goal line still reads. */
+.paceLabel {
+  fill: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-label);
+  paint-order: stroke;
+  stroke: var(--plan-surface, var(--page));
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.key {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: auto;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+}
+
+.keyRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.keyRow li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* A kind's entry: its range as the chart draws it, a pale capsule between
+   a solid faster end and a light slower end. */
+.capsule {
+  display: block;
+  flex: none;
+  width: 10px;
+  height: 20px;
+  border-radius: var(--radius-pill);
+  background:
+    radial-gradient(circle at 50% 5px, var(--kind) 4.5px, transparent 5px),
+    radial-gradient(circle at 50% 15px, color-mix(in srgb, var(--kind) 50%, var(--plan-surface, var(--page))) 4.5px, transparent 5px),
+    color-mix(in srgb, var(--kind) 22%, var(--plan-surface, var(--page)));
+}
+
+/* The two ends, Runna's two key dots, in the first drawn kind's colour. */
+.dot {
+  display: block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--kind);
+}
+
+.dotSlow {
+  background: color-mix(in srgb, var(--kind) 50%, var(--plan-surface, var(--page)));
+}
+
+.lineSwatch {
+  display: block;
+  flex: none;
+  overflow: visible;
+}

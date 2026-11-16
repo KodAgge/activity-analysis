@@ -134,27 +134,32 @@ And what it contributed was the width of the range: it set whichever end was fur
 ### Why the raw estimate cannot be inverted
 
 The heart-rate VO2max from `vo2max.md` is a fitness estimate on days the athlete did not race, and inverting the Daniels relation at it gives a time.
-Applied raw that time is wrong by a wide margin: measured during design, before this module existed, over 150 points with a smoothed estimate and at least two eligible 5 km efforts within 42 days, raw inversion predicts a median 5 km in 23.5% less time than the actual best.
+Applied raw that time is wrong by a wide margin: over the 188 points the calibration below is fitted on, raw inversion predicts a median 5 km in 26.1% less time than the fastest eligible 5 km in the 42 days up to the run.
 The estimate's level is a model output, as its document says, and the inversion inherits every unit of its offset.
 
 ### The calibration
 
 It does track performance well enough to calibrate.
-Against the VDOT of the nearby best 5 km:
+The fit is one least-squares regression over the `fitness_series` this module writes, so on the shipped `hr_vo2max`.
+A run is a point when it has an `hr_vo2max_smoothed` and at least two eligible 5 km efforts in the 42 days up to and including it, eligible under the records rule above; its $x$ is that smoothed estimate and its $y$ is the VDOT of the fastest of those 5 km efforts.
+Measured on 2026-11-14 over 188 points:
 
 $$
-\mathrm{VDOT} = 0.510 \cdot \mathrm{VO}_2^{\text{hr}} + 11.60, \qquad r = 0.528, \qquad \text{residual SD } 2.37 \text{ VDOT units},
+\mathrm{VDOT} = 0.586 \cdot \mathrm{VO}_2^{\text{hr}} + 5.92, \qquad r = 0.597, \qquad \text{residual SD } 2.30 \text{ VDOT units},
 $$
 
 held in `ORDINARY_RUN_CALIBRATION_SLOPE`, `ORDINARY_RUN_CALIBRATION_INTERCEPT` and `ORDINARY_RUN_RESIDUAL_VDOT`.
-These constants were fitted during design on an exploratory estimator rather than on the implemented `hr_vo2max`, and have not been refitted against the shipped `fitness_series`; "Why it runs slow after a breakthrough effort" below measures what a refit would change.
+The residual SD is taken with two degrees of freedom removed, one for each fitted coefficient.
+These constants replaced a fit made during design, before this module existed, on an exploratory estimator; "Why it runs slow after a breakthrough effort" below measures what the replacement changed.
 `predict_from_ordinary_run` maps the latest `hr_vo2max_smoothed` through it and inverts at the result, and at the result plus and minus one residual standard deviation for the band.
-The band is computed by inverting at $\mathrm{VDOT} \pm 2.37$ rather than by adding seconds, because time is a nonlinear function of VDOT and a symmetric band in one is asymmetric in the other; `test_the_band_brackets_the_prediction_and_is_not_symmetric_in_time` checks that.
+The band is computed by inverting at $\mathrm{VDOT} \pm 2.30$ rather than by adding seconds, because time is a nonlinear function of VDOT and a symmetric band in one is asymmetric in the other; `test_the_band_brackets_the_prediction_and_is_not_symmetric_in_time` checks that.
 A higher VDOT is a lower time, so `low_s` comes from the upper VDOT.
 
-Two things must be said wherever this prediction appears, and the response model enforces the first by refusing an `ordinary_runs` model without `low_s` and `high_s`.
-**The band is wide**: for a synthetic 5 km in 25:00, from 1.24 minutes faster to 1.38 minutes slower, roughly 5%, against a much tighter prediction from actual best efforts, so where a recent eligible best effort exists that prediction is the better one.
-**The slope of 0.510 is itself a finding**: the heart-rate estimate moves about twice as fast as measured performance does, which is the same overstatement visible in its yearly medians, now quantified.
+One thing must be said wherever this prediction appears, and the response model enforces it by refusing an `ordinary_runs` model without `low_s` and `high_s`.
+**The band is wide**: for a synthetic 5 km in 25:00, from 1.20 minutes faster to 1.34 minutes slower, roughly 5%, against a much tighter prediction from actual best efforts, so where a recent eligible best effort exists that prediction is the better one.
+
+The slope of 0.586 is not a scale factor between the two series, and should not be read as the heart-rate estimate moving faster than performance.
+A least-squares slope is $r \cdot \sigma_{\mathrm{VDOT}} / \sigma_{\mathrm{VO}_2^{\text{hr}}}$, and over the 188 points the ratio of standard deviations is 0.98, so a slope well below 1 is almost entirely the correlation, the scatter between the two, rather than a difference in how far each moves.
 
 ### Why this is not the calibration that was rejected
 
@@ -165,15 +170,15 @@ The reported VO2max stays raw; only the race time derived from it is calibrated.
 
 ### Why it runs slow after a breakthrough effort
 
-On the store as of 2026-10-06 the calibration maps the latest smoothed estimate to a 10 km 3.5% slower than the window's own best 10 km, with a band from 4.9% faster to 5.5% slower than the prediction.
-The window's best is 3.3% faster than the prediction, so it is inside the band, near its fast edge, and the gap has three causes, none of them a defect.
+On the store as of 2026-11-14 the calibration maps the latest smoothed estimate to a 10 km 7.1% slower than the window's own best 10 km, with a band from 4.9% faster to 5.5% slower than the prediction.
+The window's best is 6.6% faster than the prediction, so it lies outside the band, 1.8% beyond its fast edge, and the gap has three causes, none of them a defect.
 
 - **It reads typical training.** The calibration's target is the best 5 km inside 42 days of training, and most of those are windows inside training runs rather than races, so the prediction says what training usually shows rather than what the athlete can race.
-- **It is regressed toward the middle.** With $r$ between 0.53 and 0.60, a regression of VDOT on the estimate pulls every prediction toward the mean VDOT of the points it was fitted on, so it runs slow at the athlete's peaks and fast at the troughs.
+- **It is regressed toward the middle.** With $r = 0.60$, a regression of VDOT on the estimate pulls every prediction toward the mean VDOT of the points it was fitted on, so it runs slow at the athlete's peaks and fast at the troughs.
 - **It is smoothed over 42 days.** One fast run moves the estimate little, and only through heart rate at pace, which a single run on a good day does not change much.
 
-A refit would not close the gap.
-Refitted against the shipped estimator under the same selection rule, over 188 points, the calibration is $\mathrm{VDOT} = 0.586 \cdot \mathrm{VO}_2^{\text{hr}} + 5.92$ with $r = 0.597$ and a residual SD of 2.30, and it puts the same 10 km 7.1% slower than the window's best, further from it.
+The design fit these constants replaced, $\mathrm{VDOT} = 0.510 \cdot \mathrm{VO}_2^{\text{hr}} + 11.60$ with a residual SD of 2.37, put the same 10 km 3.4% slower than the window's best, with the best inside its band.
+It was nearer for the wrong reason: it was fitted on an exploratory estimator, and applied to the shipped estimator's 188 points it puts VDOT 1.64 units too high on average, so it was fast everywhere rather than right at this point.
 
 Showing it only where no recent best effort exists was considered and rejected, because measured over the history it would never be shown: all 190 runs that carry a smoothed estimate also have an eligible best effort of a kilometre or more in the 90 days before them.
 It is therefore shown beside the best-effort range, visually secondary to it, and labelled as what typical training supports.
@@ -236,7 +241,7 @@ for label, sel in (("all six", usable), ("without 15k", [r for r in usable if r[
     cs, d_prime = np.polyfit(t, d, 1)
     print(label, round(cs, 2), round(d_prime), [round((x - d_prime) / cs / 60, 1) for x in (1000, 5000, 10000, 21097.5)])
 
-# The calibration refitted against the shipped estimator.
+# The calibration, fitted against the shipped estimator.
 df = cur.execute("""
     WITH e AS (
         SELECT a.start_time_utc t, be.elapsed_time_s s FROM best_efforts be
@@ -250,8 +255,20 @@ x = df.x.to_numpy()
 y = np.array([vdot(5000.0, s) for s in df.best_s])
 slope, intercept = np.polyfit(x, y, 1)
 residual = (y - (slope * x + intercept)).std(ddof=2)
-print("refit", len(x), round(slope, 3), round(intercept, 2), round(np.corrcoef(x, y)[0, 1], 3), round(residual, 2))
-print("10k from the refit", round(time_for_vdot(10000.0, slope * estimate + intercept) / 60, 1))
+print("fit", len(x), round(slope, 3), round(intercept, 2), round(np.corrcoef(x, y)[0, 1], 3), round(residual, 2))
+print("sd ratio", round(y.std(ddof=1) / x.std(ddof=1), 2))
+raw = np.array([time_for_vdot(5000.0, v) for v in x])
+print("raw inversion, median % against the best 5 km", round(100 * np.median(raw / df.best_s.to_numpy() - 1), 1))
+print("design fit's mean residual", round(float(np.mean(y - (0.510 * x + 11.60))), 2))
+
+# The ordinary-run 10 km against the window's best 10 km, under the fit and under the design fit.
+best_10k = next(r["elapsed_time_s"] for r in rows if r["distance_key"] == "10k")
+for label, (a, b, sd) in (("fit", (slope, intercept, residual)), ("design", (0.510, 11.60, 2.37))):
+    centre = a * estimate + b
+    p, fast, slow = (time_for_vdot(10000.0, centre + k) for k in (0.0, sd, -sd))
+    print(label, "% slower than the best", round(100 * (p / best_10k - 1), 1),
+          "band", round(100 * (1 - fast / p), 1), round(100 * (slow / p - 1), 1),
+          "best faster than the prediction", round(100 * (1 - best_10k / p), 1))
 
 # How often a fallback-only rule would have shown the ordinary-run prediction.
 keys = tuple(k for k, m in VDOT_DISTANCES_M.items() if m >= MIN_PREDICTION_DISTANCE_M)
@@ -267,4 +284,4 @@ PY
 ```
 
 `np.polyfit` stands in for the removed `critical_speed`, which fitted the same line by `np.linalg.lstsq`.
-The refit's 42-day selection is the calibration's own rule: a smoothed estimate and at least two eligible 5 km efforts in the 42 days up to the run.
+The 42-day selection is the calibration's own rule: a smoothed estimate and at least two eligible 5 km efforts in the 42 days up to and including the run, with $y$ the VDOT of the fastest of them.

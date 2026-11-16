@@ -1,5 +1,28 @@
 import { describe, expect, it } from 'vitest'
 import {
+  changeCount,
+  checkpointLabel,
+  dayCount,
+  dayMonthNear,
+  dayOfMonthLabel,
+  feasibilityLabel,
+  goalTitle,
+  heartRateRange,
+  outcomeLabel,
+  phaseLabel,
+  planStatusLabel,
+  raceDistanceBadge,
+  raceDistanceLabel,
+  sessionKindLabel,
+  speedRangeAsKmh,
+  speedRangeAsPace,
+  stepAmount,
+  elapsedMinutesLabel,
+  stepRoleLabel,
+  surfaceLabel,
+  weekdayDayMonthNear,
+} from '.'
+import {
   NO_VALUE,
   altitude,
   area,
@@ -7,6 +30,7 @@ import {
   ascent,
   ascentPerKm,
   calendarDayOfDate,
+  calendarDayOfLocalDate,
   formatWholeVo2max,
   cadence,
   calendarDate,
@@ -23,12 +47,17 @@ import {
   effortTagLabel,
   elevationChange,
   formatDecoupling,
+  formatLoadFigure,
+  formLabel,
+  loadLabel,
+  perDayAsWeekly,
   formatPredictionBand,
   formatPredictionSpan,
   formatSlope,
   formatVo2max,
   fastestRankLabel,
   runCount,
+  paceOfSeconds,
   metresLabel,
   netElevationChange,
   formatLocal,
@@ -606,6 +635,19 @@ describe('distanceKeyLabel', () => {
   })
 })
 
+describe('formatLoadFigure', () => {
+  it('gives fitness and fatigue to one decimal, unsigned', () => {
+    expect(formatLoadFigure(44)).toBe('44.0')
+    expect(formatLoadFigure(56.84)).toBe('56.8')
+  })
+
+  it('signs form, and a form that rounds to zero is +0.0, never -0.0', () => {
+    expect(formatLoadFigure(6.2, true)).toBe('+6.2')
+    expect(formatLoadFigure(-12.8, true)).toBe('-12.8')
+    expect(formatLoadFigure(-0.04, true)).toBe('+0.0')
+  })
+})
+
 describe('formatDecoupling', () => {
   it('signs the value, because the direction is the meaning', () => {
     expect(formatDecoupling(3.5)).toBe('+3.5%')
@@ -624,7 +666,7 @@ describe('formatDecoupling', () => {
 
 describe('formatVo2max', () => {
   it('shows one decimal, which is all the model supports', () => {
-    // The estimate's residual against performance is 2.37 VDOT units, so a
+    // The estimate's residual against performance is 2.30 VDOT units, so a
     // second decimal would assert precision the model does not have.
     expect(formatVo2max(51.34)).toBe('51.3')
     expect(formatVo2max(41.68)).toBe('41.7')
@@ -633,6 +675,27 @@ describe('formatVo2max', () => {
   it('renders the empty glyph for null and undefined', () => {
     expect(formatVo2max(null)).toBe(NO_VALUE)
     expect(formatVo2max(undefined)).toBe(NO_VALUE)
+  })
+})
+
+describe('training load', () => {
+  it('reads a per-day fitness or fatigue as the weekly load it amounts to, a unit change only', () => {
+    expect(perDayAsWeekly(48)).toBe(336)
+    expect(perDayAsWeekly(0)).toBe(0)
+  })
+
+  it('writes a load as a whole number with no unit, since TRIMP is unitless', () => {
+    expect(loadLabel(452.4)).toBe('452')
+    expect(loadLabel(0)).toBe('0')
+    expect(loadLabel(null)).toBe(NO_VALUE)
+  })
+
+  it('signs form, because its side of zero is the reading, and leaves zero unsigned', () => {
+    expect(formLabel(5.4)).toBe('+5')
+    expect(formLabel(-12.6)).toBe('-13')
+    expect(formLabel(0.2)).toBe('0')
+    expect(formLabel(-0.3)).toBe('0')
+    expect(formLabel(undefined)).toBe(NO_VALUE)
   })
 })
 
@@ -819,6 +882,14 @@ describe('fastestRankLabel', () => {
   })
 })
 
+describe('paceOfSeconds', () => {
+  it('writes seconds per kilometre as a pace, bare or with its unit', () => {
+    expect(paceOfSeconds(270)).toBe('4:30')
+    expect(paceOfSeconds(357, true)).toBe('5:57/km')
+    expect(paceOfSeconds(0)).toBe('–')
+  })
+})
+
 describe('runCount', () => {
   it('counts runs in the plural, and one run in the singular', () => {
     expect(runCount(27)).toBe('27 runs')
@@ -915,5 +986,119 @@ describe('formatWholeVo2max', () => {
   })
   it('writes the no-value glyph for a missing number', () => {
     expect(formatWholeVo2max(undefined)).toBe(NO_VALUE)
+  })
+})
+
+describe('calendarDayOfLocalDate', () => {
+  it('reads the browser wall clock, not the UTC instant', () => {
+    // Built from local components, so it is the same wall-clock day on any machine.
+    expect(calendarDayOfLocalDate(new Date(2026, 10, 14, 23, 59))).toBe(calendarDayOfDate('2026-11-14'))
+    expect(calendarDayOfLocalDate(new Date(2026, 10, 15, 0, 1))).toBe(calendarDayOfDate('2026-11-15'))
+  })
+})
+
+describe('the training plan formatters', () => {
+  it('names a race distance the way a race is named', () => {
+    expect(raceDistanceLabel(5000)).toBe('5 km')
+    expect(raceDistanceLabel(10000)).toBe('10 km')
+    expect(raceDistanceLabel(1500)).toBe('1.5 km')
+    expect(raceDistanceLabel(21097.5)).toBe('Half marathon')
+    expect(raceDistanceLabel(42195)).toBe('Marathon')
+    expect(goalTitle(5000, 1500)).toBe('5 km under 25:00')
+  })
+
+  it('badges a race distance to the tenth as its label has it, a named race whole', () => {
+    expect(raceDistanceBadge(800)).toBe('0.8k')
+    expect(raceDistanceBadge(1500)).toBe('1.5k')
+    expect(raceDistanceBadge(1609.344)).toBe('1.6k')
+    expect(raceDistanceBadge(5000)).toBe('5k')
+    expect(raceDistanceBadge(10000)).toBe('10k')
+    expect(raceDistanceBadge(10500)).toBe('10.5k')
+    expect(raceDistanceBadge(12500)).toBe('12.5k')
+    expect(raceDistanceBadge(16093.44)).toBe('16.1k')
+    expect(raceDistanceBadge(21097.5)).toBe('21k')
+    expect(raceDistanceBadge(42195)).toBe('42k')
+  })
+
+  it('counts days and changes with their plurals', () => {
+    expect(dayCount(1)).toBe('1 day')
+    expect(dayCount(35)).toBe('35 days')
+    expect(changeCount(1)).toBe('1 change')
+    expect(changeCount(4)).toBe('4 changes')
+  })
+
+  it('writes a date without its year inside the current year, and with it outside', () => {
+    const today = calendarDayOfDate('2026-11-27')
+    expect(dayMonthNear(calendarDayOfDate('2026-12-12'), today)).toBe('12 December')
+    expect(dayMonthNear(calendarDayOfDate('2027-01-02'), today)).toBe('2 January 2027')
+    expect(weekdayDayMonthNear(calendarDayOfDate('2026-11-29'), today)).toBe('Sunday 29 November')
+    expect(weekdayDayMonthNear(calendarDayOfDate('2025-11-29'), today)).toBe('Saturday 29 November 2025')
+  })
+
+  it('labels a checkpoint with its distance, its kind and its own target, as far as it has them', () => {
+    expect(checkpointLabel('time_trial', 3000, 690)).toBe('3 km TT 11:30')
+    expect(checkpointLabel('long', 13000, 3900)).toBe('13 km long run 1:05:00')
+    // Without a distance the kind is written out in full.
+    expect(checkpointLabel('time_trial', null, 690)).toBe('Time trial 11:30')
+    // Without a target the kind alone, since a distance alone says nothing to check.
+    expect(checkpointLabel('long', 13000, null)).toBe('Long run')
+    expect(checkpointLabel('time_trial', null, null)).toBe('Time trial')
+  })
+
+  it('names session kinds, step roles, verdicts and statuses', () => {
+    expect(sessionKindLabel('long')).toBe('Long run')
+    expect(sessionKindLabel('time_trial')).toBe('Time trial')
+    expect(sessionKindLabel('cross_training')).toBe('Cross-training')
+    expect(stepRoleLabel('warmup')).toBe('Warm-up')
+    expect(stepRoleLabel('cooldown')).toBe('Cool-down')
+    expect(stepRoleLabel('strides')).toBe('Strides')
+    expect(feasibilityLabel('possible')).toBe('Possible')
+    expect(planStatusLabel('superseded')).toBe('Superseded')
+    expect(surfaceLabel('track')).toBe('Track')
+    expect(surfaceLabel('other')).toBe('Other surface')
+    expect(outcomeLabel('partial')).toBe('Partial')
+    expect(phaseLabel('build')).toBe('Build')
+    expect(phaseLabel('Race-specific')).toBe('Race-specific')
+  })
+
+  it('writes a calendar cell\'s day as its number, with the month on the 1st or when asked', () => {
+    expect(dayOfMonthLabel(calendarDayOfDate('2026-11-17'))).toBe('17')
+    expect(dayOfMonthLabel(calendarDayOfDate('2026-12-01'))).toBe('1 Dec')
+    expect(dayOfMonthLabel(calendarDayOfDate('2026-11-16'), true)).toBe('16 Nov')
+  })
+
+  it('writes a step as its repeats and its distance or duration', () => {
+    expect(stepAmount(6, 800, null)).toBe('6 × 800 m')
+    expect(stepAmount(1, 13000, null)).toBe('13 km')
+    expect(stepAmount(1, 1200, null)).toBe('1.2 km')
+    expect(stepAmount(4, null, 20)).toBe('4 × 20 s')
+    expect(stepAmount(1, null, 1200)).toBe('20 min')
+    expect(stepAmount(1, null, 90)).toBe('1:30')
+    expect(stepAmount(1, null, null)).toBe(NO_VALUE)
+  })
+
+  it('writes a time axis tick in whole minutes from the start', () => {
+    expect(elapsedMinutesLabel(0)).toBe('0')
+    expect(elapsedMinutesLabel(600)).toBe('10 min')
+    expect(elapsedMinutesLabel(3600)).toBe('60 min')
+  })
+
+  it('writes a target speed range as paces, faster first, and a heart rate range', () => {
+    expect(speedRangeAsPace(3.8462, 3.9216)).toBe('4:15-4:20/km')
+    expect(heartRateRange(140, 150)).toBe('140-150 bpm')
+    expect(heartRateRange(null, 161)).toBe('up to 161 bpm')
+    // Ties go to the even neighbour, as Python's round does in the CLI.
+    expect(heartRateRange(null, 160.5)).toBe('up to 160 bpm')
+    expect(heartRateRange(null, 161.5)).toBe('up to 162 bpm')
+    expect(heartRateRange(null, 161, [140, 167.4, 175, 185])).toBe('up to 161 bpm (Z2)')
+  })
+
+  it('writes a target speed range as treadmill km/h to one decimal, slower first', () => {
+    // 3.6 x m/s: 13.846 and 14.118 km/h.
+    expect(speedRangeAsKmh({ low_mps: 3.8462, high_mps: 3.9216 })).toBe('13.8-14.1 km/h')
+    expect(speedRangeAsKmh({ low_mps: 2.5641, high_mps: 2.9 })).toBe('9.2-10.4 km/h')
+    // A whole number keeps its decimal, so the column reads alike.
+    expect(speedRangeAsKmh({ low_mps: 3.3333, high_mps: 3.6 })).toBe('12.0-13.0 km/h')
+    expect(speedRangeAsKmh({ low_mps: Number.NaN, high_mps: 3.6 })).toBe(NO_VALUE)
   })
 })

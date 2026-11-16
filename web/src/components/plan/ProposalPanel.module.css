@@ -1,0 +1,240 @@
+/*
+ * A proposal on its card: the changes at a glance, how to decide, then
+ * each change in full, numbered in a round badge and ruled off from the
+ * next by a hairline.
+ *
+ * On a phone it all stacks, the glance first, as Runna leads a card with
+ * its short bold rows (`plan-home-flat`) and puts a plan's actions under
+ * them. From 60rem the changes in full take the card's main column at a
+ * prose measure, and the command over the glance a rail at its far end,
+ * set off by a hairline, where it stays in view while the changes scroll.
+ */
+.panel {
+  display: grid;
+  grid-template-areas:
+    'rail'
+    'changes';
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+}
+
+.rail {
+  grid-area: rail;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+@media (min-width: 60rem) {
+  .panel {
+    grid-template-areas: 'changes rail';
+    grid-template-columns: minmax(0, 1fr) 24rem;
+    column-gap: var(--space-8);
+  }
+
+  .rail {
+    position: sticky;
+    top: var(--space-6);
+    align-self: start;
+    padding-left: var(--space-8);
+    border-left: var(--hairline);
+  }
+
+  /* The decision leads the rail; the glance is its reference under it. */
+  .decide {
+    order: -1;
+  }
+}
+
+.decide {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* The glance: one row per change, its badge, its title in bold and the
+   goal change's pill at the end, a hairline between rows as the history's
+   rows have. Not links: the changes are right below. */
+.glance {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.glanceRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: var(--hairline);
+}
+
+.glanceRow:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.glanceRow:last-child {
+  padding-bottom: 0;
+}
+
+.glanceTitle {
+  font-size: var(--text-body);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+}
+
+@media (min-width: 60rem) {
+  .glanceRow:first-child {
+    padding-top: var(--space-2);
+    border-top: var(--hairline);
+  }
+
+  .glanceTitle {
+    font-size: var(--text-small);
+  }
+}
+
+/* The goal change, marked in ink and never in a kind's colour: an outlined
+   pill, the history's own pill for a version awaiting a decision. */
+.goalPill {
+  padding: calc(var(--space-1) - 1px) calc(var(--space-2) - 1px);
+  border: 1px solid var(--ink);
+  border-radius: var(--radius-pill);
+  color: var(--ink);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  white-space: nowrap;
+}
+
+.how {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--text-small);
+  line-height: var(--leading-body);
+}
+
+.archives {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+  line-height: var(--leading-body);
+}
+
+/* The command, in the global `.mono` on the panel ground under the
+   sentence that introduces it, as a terminal line reads. */
+.command {
+  display: block;
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--border);
+  font-size: 0.95em;
+  line-height: var(--leading-body);
+}
+
+.word {
+  white-space: nowrap;
+}
+
+.changes {
+  grid-area: changes;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 59.99rem) {
+  .changes {
+    border-top: var(--hairline);
+  }
+
+  .change:first-child {
+    border-top: none;
+  }
+}
+
+/* A change: its number in the badge the history's rows carry, then the
+   title over the reason. */
+.change {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+  border-top: var(--hairline);
+}
+
+.change:last-child {
+  padding-bottom: 0;
+}
+
+@media (min-width: 60rem) {
+  .change:first-child {
+    padding-top: 0;
+    border-top: none;
+  }
+
+  .changes {
+    max-width: 46rem;
+  }
+}
+
+.number {
+  display: grid;
+  place-items: center;
+  width: var(--space-8);
+  height: var(--space-8);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--border);
+  font-size: var(--text-small);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.changeBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* The title's first line centred on the badge: half the badge less half
+   the title's line. */
+.changeHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  padding-top: calc((var(--space-8) - var(--text-heading) * var(--leading-tight)) / 2);
+}
+
+.changeTitle {
+  margin: 0;
+  font-size: var(--text-heading);
+  line-height: var(--leading-tight);
+}
+
+/* The reason, small and close-set under the bold title, so each change
+   reads as its title over a short block rather than a run of bullets of
+   one weight. */
+.panel .reason {
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--text-small);
+  line-height: var(--leading-body);
+}
+
+.panel .reason ul {
+  gap: 0;
+}
+
+@media print {
+  .rail {
+    position: static;
+  }
+}

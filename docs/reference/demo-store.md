@@ -39,6 +39,7 @@ Build with a fixed `--end`, run `tiles` so the maps have a basemap (it sends onl
    Each id is `compute_activity_id` of the run's start, so it is what ingesting a FIT starting then would produce.
 3. `recompute` builds the derived layer.
 4. A Garmin VO2max series is written as a `MetricsMaxMetData` JSON file in the export's own shape, read back with `read_max_met` and stored with `upsert_device_vo2max`, so the Trends VO2max chart has Garmin's line.
+5. A training plan is proposed and accepted through `PlanStore`, so the Plan view has one; see "The training plan" below.
 
 **Every activity belongs to the athlete `demo`, the fixtures included.**
 An id hashes the athlete with the start minute.
@@ -92,6 +93,29 @@ The resting heart rate setting changes once, from 70 to 67 bpm, 50 weeks before 
 
 Races fall 3, 30, 61, 96 and 132 weeks before `--end` for the 5 km, 6, 44, 81 and 116 for the 10 km, and 13, 52 and 105 for the half marathon, so each kind has an effort inside the 90-day prediction window.
 Their heart rate swings 0.6 times the fixture's around its median, because a race sits near threshold from the first kilometre.
+
+## The training plan
+
+`write_demo_plan` writes one goal, `demo-10k`: a 10 km road race on the last day of a ten-week plan, which starts on the Monday two weeks before the week holding `--end`.
+Neither version is written by Claude; both are scripted, and both go through `PlanStore.propose`, so every check `plan propose` runs passes on them.
+
+- **Version 1** is proposed and accepted the day before the plan starts, from the context as of that day.
+- **Version 2** is the revision at `--end`: the same sessions, an outcome of `done` for each session up to `--end`, and one change, the long runs still to come 2 km longer.
+
+The weeks up to `--end` hold one session per stored run, so every past session is done and the calendar shows each beside its run.
+A run tagged intervals becomes an interval session, one of 14 km or more a long run, and every other an easy run.
+The weeks after `--end` hold intervals on Tuesday, easy runs on Wednesday, Thursday and Saturday and a long run on Sunday, and the race week two easy runs and the race.
+The first four weeks and the race week are detailed; the five between are outlines.
+
+The estimate is the mean of the best-effort models' 10 km predictions, and the target 2.5% under it, rounded to 30 s.
+Both versions take their paces and estimate from version 1's context, since a revision that changed a past session's paces would be refused.
+
+**The plan has no heart-rate zones.**
+The threshold estimate needs three all-out readings in 365 days, and the demo's history has two: the 10 km races 6 and 44 weeks before `--end`, its 5 km races being shorter than the 30 minutes a reading needs.
+So the easy ceiling is 78% of the profile's maximum, `EASY_CEILING_OF_MAX`, the versions carry no zone boundaries or TRIMP per minute, and the Plan view draws no planned TRIMP and no expected fitness and fatigue.
+Giving the demo a third reading means rescheduling its races, which changes every run after the first moved one, and with it every figure on this page.
+
+`web/scripts/readme-screenshots.mjs plan` fixes the browser's clock to version 2's `data_through`, since the Plan view reads today's date for its current week.
 
 ## The 12 hour ultra
 

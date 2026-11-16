@@ -60,10 +60,14 @@ These are the stages it passes through, in order.
 | 15 | Count days since the previous run | built | [rest-days.md](rest-days.md) |
 | 16 | Claim the ground each loop encloses, accumulate the territory | built | [territory.md](territory.md) |
 | 17 | Count a run slower than 9:00/km as a walk | built | [reclassification.md](reclassification.md) |
+| 18 | Estimate threshold heart rate, zone each run on it, weigh the load as TRIMP | built | [threshold-and-load.md](threshold-and-load.md) |
+| 19 | Project a training plan's fitness, fatigue and form | built | [plan-projection.md](plan-projection.md) |
 
 Stage 17 runs between stages 5 and 6: it needs the grid's moving time, and an activity it counts as a walk reaches none of the stages after it. It is numbered last because it was added last, and the numbers above are cited elsewhere.
 
-Stage 10 is the one stage that is not part of the derived pipeline: it is computed at read time by the API, from the local dates of the stored runs, because it depends on today's date and so has no fixed answer to store.
+Stages 10 and 19 are not part of the derived pipeline.
+Stage 10 is computed at read time by the API, from the local dates of the stored runs, because it depends on today's date and so has no fixed answer to store.
+Stage 19 is computed by `plan propose` when it stores a plan version, from the plan and the measured load series, and stamped on the version.
 
 Stage 9 gets a document here only if its code lands, because a derivation written before the implementation drifts from it and there is nothing to check it against.
 
@@ -194,6 +198,31 @@ A run whose last position is within 200 m of its first closes a loop, and the gr
 Every area is an ellipsoidal area, read on an equal-area projection this project implements.
 
 [territory.md](territory.md) derives why the shoelace area of a self-crossing track is not the ground it encloses, measures the width at which an out-and-back's slivers stop and genuine ground starts, derives the ellipsoidal Lambert azimuthal equal-area projection and checks its areas against the WGS84 geodesic, and measures the region and display rules.
+
+### 17. Count a run slower than 9:00/km as a walk
+
+An activity recorded as running whose average moving pace, the device's session distance over the grid's moving time, is slower than 9:00/km is counted as a walk.
+It gets one row in `sport_reclassifications` and nothing else from the derived layer, and the `activities` view serves it as `walking`, so every running query leaves it out without knowing the rule.
+Most of what it catches are treadmill sessions, which is why the distance is the session total rather than the footpod's odometer.
+
+[reclassification.md](reclassification.md) explains why each term is moving time, the canonical distance and pace rather than cadence, measures the empty band 9:00/km falls in, and counts what the walks carried into the derived layer before the rule.
+
+### 18. Estimate threshold heart rate, zone each run on it, weigh the load as TRIMP
+
+The heart rate at lactate threshold, read from the final 20 minutes of the 30 to 60 minute efforts that were themselves hard, on runs tagged all out, as Friel's field test reads it, with a guard against a wrist sensor that locks on late, and time-versioned like the athlete profile.
+Five zones as percentages of it split each run's heart-rate time.
+Each run's load is Banister's TRIMP, every second weighed by where its heart rate sits between the measured resting heart rate and a maximum read from the history's peaks, and the daily TRIMP gives fitness, fatigue and form as exponentially weighted means, with their weekly means beside them.
+Its inputs are the whole history's best efforts, the runs not known to be outdoors, the runs the effort tag calls all out, the running athlete profile, the canonical daily resting heart rate and the written grids; it reads nothing the fitness pass writes, and sits after it only to keep the whole-history passes together.
+
+[threshold-and-load.md](threshold-and-load.md) derives the eligibility rule and why each part of it exists, the zones, TRIMP and the rest and max it rests on, the two time constants and the weekly means, and measures the lock-on guard, the window and the minimum reading count, the rest and max windows, the sawtooth and an outside check against Strava's Relative Effort on the real store.
+
+### 19. Project a training plan's fitness, fatigue and form
+
+Each plan week's planned TRIMP, its zone minutes priced at the athlete's recent TRIMP per minute in each zone, spread over the week's sessions by their planned duration, run through stage 18's recursion from the last measured day to the race.
+A goal queued behind another runs the other's plan up to its own first week.
+The stamp holds the start, the race-morning values and the weekly means.
+
+[plan-projection.md](plan-projection.md) derives the spreading, the race-morning convention, the first week's mean and the bridge between queued goals, and measures how much the spreading and an error in TRIMP per minute move race morning on the real store.
 
 ## Conventions for documents in this directory
 

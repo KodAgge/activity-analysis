@@ -103,7 +103,19 @@ function renderShell(initialPath = '/') {
     path: '/territory',
     component: () => <p>territory stub</p>,
   })
+  const planRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/plan',
+    component: () => <p>plan stub</p>,
+  })
+  const planGoalRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/plan/$goalId',
+    component: () => <p>plan goal stub</p>,
+  })
   const routeTree = rootRoute.addChildren([
+    planRoute,
+    planGoalRoute,
     territoryRoute,
     indexRoute,
     activitiesRoute,
@@ -160,10 +172,19 @@ describe('AppShell', () => {
     const names = within(tabs)
       .getAllByRole('link')
       .map((link) => link.textContent)
-    expect(names).toEqual(['Overview', 'Activities', 'Records', 'Trends', 'Progression', 'Distributions', 'Territory'])
+    expect(names).toEqual([
+      'Overview',
+      'Activities',
+      'Records',
+      'Trends',
+      'Progression',
+      'Distributions',
+      'Territory',
+      'Plan',
+    ])
   })
 
-  it('holds the last three behind a More tab that opens and closes their sheet', async () => {
+  it('holds the last four behind a More tab that opens and closes their sheet', async () => {
     // On a phone the bar shows four tabs and More; the stylesheet hides
     // the sheet while closed, which jsdom does not apply, so this pins the
     // state the stylesheet keys on - the button's `aria-expanded` and the
@@ -179,7 +200,7 @@ describe('AppShell', () => {
       within(sheet ?? document.createElement('div'))
         .getAllByRole('link')
         .map((link) => link.textContent),
-    ).toEqual(['Progression', 'Distributions', 'Territory'])
+    ).toEqual(['Progression', 'Distributions', 'Territory', 'Plan'])
     fireEvent.click(more)
     expect(more).toHaveAttribute('aria-expanded', 'true')
     fireEvent.keyDown(document, { key: 'Escape' })
@@ -242,6 +263,16 @@ describe('AppShell', () => {
     expect(progression).toHaveAttribute('aria-current', 'page')
     expect(progression).toHaveAttribute('href', '/progression?distance=5k')
     expect(screen.getByRole('link', { name: 'Trends' })).not.toHaveAttribute('aria-current')
+  })
+
+  it("marks Plan current on a goal's own page, and More with it", async () => {
+    mockHealth(healthFixture())
+
+    renderShell('/plan/5k-2027-03-13')
+
+    expect(await screen.findByRole('link', { name: 'Plan' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: 'Plan' })).toHaveAttribute('href', '/plan')
+    expect(screen.getByRole('button', { name: 'More' }).className).toMatch(/tabActive/)
   })
 
   it('marks Records current on a route view, which is reached from its Routes section', async () => {

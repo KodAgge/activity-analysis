@@ -216,6 +216,19 @@ Writing upserts on athlete and day and keeps the later `updated_at`, so a newer 
 Each MaxMet file is ledgered by content hash like a FIT file, with `source` `garmin_export` and `status` `vo2max`.
 No derived table reads it; `GET /api/fitness` projects it as `device`.
 
+## Daily resting heart rate, `resting_hr.parquet`
+
+`resting_hr.parquet` is **canonical**: one row per athlete and calendar day, the watch's resting heart rate, written by `ingest` from a Garmin export's `DI_CONNECT/DI-Connect-Aggregator/UDSFile_*.json` files.
+The columns are `athlete_id`, `calendar_date`, `resting_hr_bpm` (float64), `record_version` and `source_file_sha256`.
+A UDS file is a JSON array of daily summary records, and only a record with a non-null `restingHeartRate` becomes a row.
+Nearly every day of the real export has one, 1611 of 1612 records.
+`record_version` is Garmin's `version` of that day's record.
+Writing upserts on athlete and day, keeps the higher `record_version` and on a tie keeps the row already stored, so a newer export overlapping an older one cannot be rolled back by re-reading the older file.
+Each UDS file is ledgered by content hash like a FIT file, with `source` `garmin_export` and `status` `resting_hr`.
+The `resting_hr` view reads it, empty and typed when the file is absent.
+`recompute` reads it for the resting heart rate TRIMP is weighed on, under "Threshold heart rate and load" below.
+A Strava export carries no such files, so it writes nothing here.
+
 ## Per-activity metrics, `activity_metrics.parquet`
 
 One row per running activity.
@@ -328,6 +341,49 @@ It is also null for a treadmill or not-known-outdoors activity, because the spee
 `vdot` is the best Daniels VDOT among the activity's eligible best efforts under the records rule above, and `vdot_distance_key` names the effort it came from.
 `hr_vo2max_smoothed` and `vdot_smoothed` are trailing 42-day means over the contributing activities; they are the reported numbers, and the raw columns are kept so a chart can show what was smoothed.
 `docs/reference/math/vo2max.md` derives both estimators and the smoothing.
+
+## Threshold heart rate and load
+
+Six tables written by the threshold and load pass, a whole-history pass because a run's estimate and maximum heart rate rest on the runs before it.
+It reads nothing the fitness pass writes: its inputs are the whole history's best efforts, the set of runs not known to be outdoors, the runs the per-run loop tagged `all_out`, the running `athlete_profile`, the canonical `resting_hr` and the grids that loop wrote, and it sits after the fitness pass only to keep the whole-history passes together.
+`docs/reference/math/threshold-and-load.md` derives the estimate, the zones, TRIMP and the daily and weekly series, and records the measurement behind the constants.
+A failure in the pass is reported under `"threshold"` in `RecomputeResult.errors` and leaves all six written with no rows.
+
+`threshold_readings.parquet` holds one row per run with an eligible effort: the effort with the highest VDOT among those of 1800 to 3600 s elapsed time with no pause, outage or jump, on a run tagged `all_out` in `activity_tags` and known to be outdoors, with at least 10% of the effort's own heart-rate seconds at or above 90% of the maximum in force for the run, whose final 1200 s give a reading.
+They give none when, after the leading seconds more than 20 bpm under the window's median heart rate are cut as a sensor locking on late, fewer than 900 s remain, or fewer than 90% of the remaining unpaused seconds carry a heart rate within 20 bpm of that median.
+`final_hr_bpm` is the mean over the remaining seconds within 20 bpm of the median, and `hr_coverage` the share of the remaining seconds that are.
+A run with no effort tag, which is every run from before the device recorded a maximum heart rate, gives no reading.
+
+`run_load.parquet` holds one row per run with a grid.
+`lthr_bpm` is the threshold estimate in force at the run's start, the median of the readings in the trailing 365 days, and `reading_ids` the runs that median rests on; both are null and empty before three readings exist.
+`trimp` is the run's Banister TRIMP, weighed on `rest_bpm` and `max_bpm`, the resting and maximum heart rate in force on its date.
+`rest_bpm` is the median of the canonical `resting_hr` days in the 28 days up to and including the run's local date, and `max_bpm` the median of the three highest `peak_hr_10s_bpm` in the trailing 540 days, the run's own included.
+When those 28 days hold no measured day, `rest_bpm` is the median of the 28 days up to the newest measured day before the run, provided that day is at most 90 days before it (`trimp.REST_CARRY_DAYS`), because only a full Garmin export carries the resting series.
+`rest_measured_through` is the newest measured day the rest rests on, so its age is visible; null when the rest is the setting or there is none.
+`peak_hr_10s_bpm` is the run's highest mean heart rate over 10 consecutive unpaused seconds, null without heart rate.
+No API route, plan context or view reads these two; they are stored as provenance, so a run's rest and max can be traced to the days and peaks behind them.
+With no measured value, each falls back to the device setting in force in `athlete_profile`, and `rest_from_setting` or `max_from_setting` is true.
+**`trimp` is null, never 0, when the run has no heart rate**, because a zero would say the run was effortless; it is null too when neither a measured value nor a setting gives a rest or a max, or when the rest is at or above the max.
+TRIMP needs no threshold estimate, so a run before the first estimate still has one.
+A run without heart rate still carries the estimate, rest and max in force on its date.
+
+`zone_time_estimated.parquet` has `zone_time`'s schema and conventions on five zones whose upper edges are 85%, 90%, 95% and 100% of the run's `lthr_bpm`, plus `trimp`, the run's TRIMP from the seconds in that zone.
+The five `trimp` values sum to the run's, and are null when the run's is null for want of a rest or max, or because the rest is at or above the max.
+Only a run with both an estimate and heart rate has rows.
+`zone_time.parquet` keeps the device's zones, because the device's own totals are its test oracle.
+
+`hr_histogram.parquet` holds a run's seconds at each whole bpm, paused and heart-rate-less seconds excluded as in `zone_time`, for every run with heart rate whether or not an estimate exists.
+A ceiling written under any threshold is answered from it by a sum, without reading the grids again.
+
+`training_load.parquet` holds one row per local calendar day, local as `queries.LOCAL_DATE_SQL` has it, from the first run's day to the last's.
+`trimp` is the day's summed run TRIMP, 0 on a day without a run or whose runs have none, and `ctl` and `atl` its exponentially weighted means with time constants of 42 and 7 days; `form` is `ctl - atl`.
+`distance_m` is the day's summed canonical run distance, a treadmill's session total included, and `distance_7d_m` its sum over the 7 days ending that day; a run without heart rate counts here though not in `trimp`.
+The series ends at the last run's day, not today, so a consumer reporting today's value has to decay it over the days since.
+The ratio of `atl` to `ctl` is deliberately not stored.
+
+`training_load_weekly.parquet` holds one row per Monday-started week of the daily series.
+`days` is how many of the week's days the series holds, under 7 only in its first and last week; `trimp` and `distance_m` are sums over them and `ctl_mean`, `atl_mean` and `form_mean` means.
+A weekly mean smooths the sawtooth a few runs a week cut into the daily `atl` and `form`.
 
 ## Routes, `routes.parquet` and `route_runs.parquet`
 
@@ -470,12 +526,12 @@ The bundled table is `src/activity_analysis/data/places.parquet`, 170 911 places
 
 ## DuckDB
 
-`store/db.py` exposes a view over both layers for each table a consumer queries: `activities`, `canonical_activities`, `sport_reclassifications`, `laps`, `streams`, `streams_1hz`, `best_efforts`, `zone_time`, `activity_metrics`, `athlete_profile`, `activity_tags`, `activity_efficiency`, `athlete_fit`, `fitness_series`, `routes`, `route_runs`, `territory_claims`, `territory_regions`, `territory_parts`.
+`store/db.py` exposes a view over both layers for each table a consumer queries: `activities`, `canonical_activities`, `sport_reclassifications`, `laps`, `device_vo2max`, `resting_hr`, `streams`, `streams_1hz`, `best_efforts`, `zone_time`, `activity_metrics`, `athlete_profile`, `activity_tags`, `activity_efficiency`, `athlete_fit`, `fitness_series`, `routes`, `route_runs`, `territory_claims`, `territory_regions`, `territory_parts`, `threshold_readings`, `run_load`, `zone_time_estimated`, `hr_histogram`, `training_load`, `training_load_weekly`.
 `activities` is `canonical_activities` with `sport` replaced by the sport the activity is counted as and the recorded one added as `recorded_sport`, so every query that filters on `sport` leaves a reclassified walk out without knowing the rule.
 `canonical_activities` is the stored table unadjusted.
 `profile_observations` deliberately has none: it is the raw input `athlete_profile` is collapsed from, so it is read by the rebuild rather than queried.
 Views exist even when nothing has been computed, so callers query unconditionally rather than branching on whether files exist.
-None is that case today: the efficiency pass fills `activity_efficiency` and `athlete_fit`, and the fitness pass fills `fitness_series`.
+None is that case today: the efficiency pass fills `activity_efficiency` and `athlete_fit`, the fitness pass fills `fitness_series`, and the threshold pass fills its six tables.
 Each is still written with its schema and no rows when its pass produced nothing, so the guarantee holds on an empty store and after a failed pass.
 
 Each view is projected through the current schema rather than being a bare `SELECT *`, so a file written before a column existed does not break every query that names it.

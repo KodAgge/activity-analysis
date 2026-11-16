@@ -11,6 +11,9 @@ The Distributions view, a histogram of any of fifteen per-run variables with per
 The territory backend is built as of 2026-10-02: `recompute` writes the ground every outdoor loop run encloses, computed with `shapely`, and `GET /api/territory` serves it; the `/territory` view that maps it is built as of 2026-10-03.
 The activity page's aerobic decoupling section, the percentage with each half's pace and heart rate, is built as of 2026-10-03, at `ANALYSIS_VERSION` 12.
 A run slower than 9:00/km is counted as a walk as of 2026-10-06, at `ANALYSIS_VERSION` 13: `recompute` records it in `sport_reclassifications` and gives it nothing else, and the `activities` view serves it as `walking`.
+The training plan is built as of 2026-11-14: the `/training-plan` skill writes and revises a plan through `activity-analysis plan`, stored under `data/plans/`, served by `GET /api/plans` and drawn at `/plan`.
+Plans steer by heart rate and plan in TRIMP as of 2026-11-15, at `ANALYSIS_VERSION` 15: `ingest` reads the daily resting heart rate from a Garmin export, `recompute` estimates the threshold heart rate from all-out efforts and weighs every run in Banister's TRIMP, and every plan week not yet ended carries planned zone minutes and an expected VO2max; the Trends view draws the weekly training load with fitness, fatigue and form.
+Plans carry the fitness, fatigue and form their planned load is expected to reach as of 2026-11-16: `plan propose` stamps them, `plan check` prints them for a draft without storing it, and the Plan view draws them against the measured weekly means.
 Measurements these documents attribute to "the real store" were taken on the maintainer's own Strava and Garmin Connect exports, ingested as of 2026-10-06: 2903 activities, 2901 of them from the Garmin files.
 345 are recorded as runs and 335 count as runs, resampled to 871939 rows at 1 Hz.
 
@@ -32,6 +35,7 @@ uv run activity-analysis info
 uv run activity-analysis serve          # read-only HTTP API on 127.0.0.1:8000, plus web/dist at / when built
 uv run activity-analysis openapi        # dump the OpenAPI document; web/scripts/generate-api.sh's source
 uv run activity-analysis tiles           # fetch the basemap areas the stored runs need (sends each area's box to Protomaps)
+uv run activity-analysis plan context|schema|propose|accept|reject|list|show  # the training plan; /training-plan drives it
 
 cd web && npm run dev                   # frontend dev server on :5173, proxying /api to :8000 above
 cd web && npm run check                 # lint + tsc -b + schema-drift check + vitest
@@ -73,19 +77,24 @@ Layered pipeline, each layer independently testable and rebuildable:
 data/raw/          unpacked export archives (gitignored)
    -> ingest/      discover -> fit_reader | gpx_reader -> normalize -> dedupe
 data/canonical/    activities.parquet, laps.parquet, streams/<activity_id>.parquet,
-                   profile_observations.parquet, device_vo2max.parquet
+                   profile_observations.parquet, device_vo2max.parquet, resting_hr.parquet
    -> analysis/    resample(1 Hz) -> best_efforts -> efficiency fits -> predictions
 data/derived/      streams_1hz/, activity_metrics.parquet, best_efforts.parquet,
                    activity_tags.parquet, zone_time.parquet, athlete_profile.parquet,
                    activity_efficiency.parquet, athlete_fit.parquet, fitness_series.parquet,
                    routes.parquet, route_runs.parquet, territory_claims.parquet,
                    territory_regions.parquet, territory_parts.parquet,
-                   sport_reclassifications.parquet
+                   sport_reclassifications.parquet, threshold_readings.parquet,
+                   run_load.parquet, zone_time_estimated.parquet, hr_histogram.parquet,
+                   training_load.parquet, training_load_weekly.parquet
    -> store/db.py  DuckDB views over both layers
    -> api/         FastAPI, JSON
    -> web/         React + TypeScript
 
 data/basemap/      manifest.json, areas/<id>.pmtiles, assets/ (fetched by tiles, gitignored)
+   -> api/         read as files, not through DuckDB
+
+data/plans/        <goal_id>/index.json, v<NNN>.json, v<NNN>.context.json (written by plan, gitignored)
    -> api/         read as files, not through DuckDB
 ```
 
@@ -148,6 +157,8 @@ Read it before touching `src/activity_analysis/api/`.
 
 `docs/reference/frontend.md` has the frontend reference: the views, where the arithmetic lives, the token and type-generation contracts and the traps.
 Read it before touching `web/`.
+
+`docs/reference/plans.md` has the training plan: the skill, the file format, the checks and the CLI.
 
 **Activity identity is content-derived, in two stages**, never a source ID.
 Provisional identity is `hash(athlete_id, start time floored to the minute)`.

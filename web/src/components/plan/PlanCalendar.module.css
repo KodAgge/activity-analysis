@@ -1,0 +1,611 @@
+/* Half the smallest step: a pill's and a chip's height, a label's gap to its value. */
+.summary,
+.session,
+.grid {
+  --half-step: calc(var(--space-1) / 2);
+}
+
+.hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.error,
+.loading {
+  margin: 0 0 var(--space-3);
+  color: var(--ink-dim);
+}
+
+/*
+ * A week's head, Runna's week card: the dates small and dim, `Week 3`
+ * bold with its phase as a pill, a dash per session, then the counts as
+ * small capitals over bold values. Shared by the grid's row header and the
+ * phone list's week.
+ */
+.summary {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.range {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+}
+
+.weekTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-stat);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+}
+
+.weekNumber {
+  white-space: nowrap;
+}
+
+.phase {
+  padding: var(--half-step) var(--space-2);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--ink) 7%, var(--raised));
+  color: var(--ink);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dashes {
+  margin-top: var(--space-3);
+}
+
+.counts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-4);
+  margin: var(--space-2) 0 0;
+}
+
+.count {
+  white-space: nowrap;
+}
+
+.countLabel {
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.countValue {
+  color: var(--ink);
+  font-size: var(--text-small);
+  font-weight: var(--weight-bold);
+}
+
+/* A day's date: the number big, a month beside it small. */
+.dateNumber {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+}
+
+.dateDigits {
+  color: var(--ink);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.dateMonth {
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+}
+
+/* Today: the date in an ink disc, as Runna rings it. */
+.today .dateDigits {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  color: var(--raised);
+}
+
+/*
+ * A planned session: its kind's tint and bar from `sessionMarks`, which set
+ * the fill and the left border, so this sets neither. A button that opens
+ * its detail, so the browser's own button look is reset to the block's:
+ * full width, left-aligned, the page's type. The knockout ground of its
+ * profile is the tint it sits on.
+ */
+.session {
+  --plan-surface: var(--kind-tint);
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--half-step);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: var(--radius-card);
+  color: var(--ink);
+  font: inherit;
+  line-height: var(--leading-tight);
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .session:hover {
+    background: color-mix(in srgb, var(--kind) 20%, var(--raised));
+  }
+}
+
+.session:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Changed by the proposal: a dashed outline on the three free sides,
+   which reads without colour; the left edge stays the kind's bar. */
+.session.changed {
+  border-top: 1.5px dashed var(--ink);
+  border-right: 1.5px dashed var(--ink);
+  border-bottom: 1.5px dashed var(--ink);
+}
+
+/* Room in the corner for the verdict's disc. */
+.judged .title {
+  padding-right: var(--space-6);
+}
+
+.title {
+  font-weight: var(--weight-bold);
+}
+
+.target {
+  color: var(--kind-tint-dim);
+  font-size: var(--text-small);
+  font-variant-numeric: proportional-nums;
+}
+
+/* The target and the profile on one line, so a block is two lines tall:
+   the profile takes what the target leaves. */
+.detail {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.target {
+  flex: none;
+}
+
+.profile {
+  display: block;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-1);
+  font-size: var(--text-label);
+}
+
+/* The glyph in a disc in the block's corner: ink, never the kind's colour. */
+.session .glyph {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+}
+
+.glyph {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  color: var(--raised);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+
+.verdictWord {
+  margin-top: var(--space-2);
+  font-weight: var(--weight-bold);
+}
+
+.note {
+  flex-basis: 100%;
+  color: var(--kind-tint-dim);
+}
+
+.changedNote {
+  margin-top: var(--space-1);
+  color: var(--kind-tint-dim);
+  font-size: var(--text-label);
+  font-style: italic;
+}
+
+/* A run done that day: a chip that links to it. */
+.run {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  align-self: flex-start;
+  padding: var(--space-1) var(--space-3);
+  border: var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--raised);
+  color: var(--ink);
+  font-size: var(--text-small);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: proportional-nums;
+  text-decoration: none;
+}
+
+.runWord {
+  color: var(--ink-dim);
+  font-weight: var(--weight-medium);
+}
+
+@media (hover: hover) {
+  .run:hover {
+    border-color: var(--border-strong);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+}
+
+.run:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* A week not yet written out: a quiet well in place of its days. */
+.outline {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+}
+
+.focus {
+  margin: 0;
+  font-size: var(--text-small);
+  font-weight: var(--weight-medium);
+}
+
+.outlineNote {
+  margin: var(--space-1) 0 0;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+}
+
+.outlineRuns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * The grid. `table-layout: fixed` gives the seven days equal columns
+ * whatever a cell holds, so a long title wraps inside its own day rather
+ * than widening it and shifting every day after it out of line.
+ */
+.grid {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: var(--text-small);
+}
+
+/*
+ * The columns. Under a fixed layout the first row sets the widths, so the
+ * header row's cells are where they are set: the week column, then the
+ * weekdays no week has anything on, shrunk to their dates. The weekdays
+ * that hold sessions share the rest, so a block grows with the screen and
+ * its title stays on one line, as Runna's full-width workout card does.
+ */
+.corner {
+  width: 10rem;
+}
+
+.restColumn {
+  width: 2.5rem;
+}
+
+/* A shrunk day's month goes under its number, which is all the width holds. */
+.restDay .dateNumber {
+  flex-direction: column;
+  gap: 0;
+}
+
+/* In the narrow week column the counts stack as Runna's stats do, label over value. */
+.grid .counts {
+  justify-content: flex-start;
+  gap: var(--space-5);
+}
+
+.grid .count {
+  display: flex;
+  flex-direction: column;
+  gap: var(--half-step);
+}
+
+/* A day with nothing on it steps back, so the days with sessions lead the row. */
+.empty .dateDigits {
+  color: var(--ink-dim);
+  font-weight: var(--weight-medium);
+}
+
+.weekday {
+  padding: 0 var(--space-2) var(--space-3);
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.weekHead {
+  padding: var(--space-3) var(--space-3) var(--space-4) 0;
+  border-top: var(--hairline);
+  font-weight: var(--weight-regular);
+  text-align: left;
+  vertical-align: top;
+}
+
+.day {
+  padding: var(--space-3) var(--space-1) var(--space-4);
+  border-top: var(--hairline);
+  vertical-align: top;
+}
+
+.date {
+  display: block;
+  padding: 0 var(--space-1);
+  font-size: var(--text-body);
+}
+
+.grid .session,
+.grid .run {
+  margin-top: var(--space-2);
+}
+
+.grid .session {
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.grid .title {
+  font-size: var(--text-body);
+}
+
+.grid .target {
+  font-size: var(--text-small);
+}
+
+/* In a day's column the profile has the block's width under the target. */
+.grid .detail {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.grid .profile {
+  flex: none;
+}
+
+.grid .judged .title {
+  padding-right: var(--space-5);
+}
+
+.grid .session .glyph {
+  top: var(--space-1);
+  right: var(--space-1);
+}
+
+.grid .run {
+  padding: var(--half-step) var(--space-2);
+  font-size: var(--text-label);
+}
+
+.outlineCell {
+  padding: var(--space-3) var(--space-1) var(--space-4);
+  border-top: var(--hairline);
+  vertical-align: top;
+}
+
+/* The phone list: weeks, each with the days that have something on them. */
+.weeks,
+.days {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The week, not the day, is the unit: wide air above each week's head,
+   where Runna starts a new card. */
+.listWeek + .listWeek {
+  margin-top: var(--space-10);
+}
+
+.days {
+  margin-top: var(--space-3);
+}
+
+/* A day: Runna's narrow day column, weekday small over the date big, then the day's blocks. */
+.listDay {
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: var(--hairline);
+}
+
+.dayColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  padding-top: var(--space-1);
+}
+
+.weekdayShort {
+  color: var(--ink-dim);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dayColumn .dateNumber {
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  font-size: var(--text-stat);
+}
+
+.todayWord {
+  color: var(--ink);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dayBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.listDay .title {
+  font-size: var(--text-body);
+}
+
+.listOutline {
+  margin-top: var(--space-3);
+}
+
+.nothing {
+  margin: 0;
+  padding-top: var(--space-1);
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+}
+
+/* The key: the kinds as Runna's squares, the verdicts in their discs. */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  margin: var(--space-6) 0 0;
+  padding: var(--space-4) 0 0;
+  border-top: var(--hairline);
+  color: var(--ink);
+  font-size: var(--text-label);
+  list-style: none;
+}
+
+.legendKind {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.swatch {
+  --kind-swatch-size: var(--space-3);
+}
+
+.swatchChanged {
+  display: inline-block;
+  width: var(--space-3);
+  height: var(--space-3);
+  border: 1.5px dashed var(--ink);
+  border-radius: 2px;
+}
+
+.legendVerdicts {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+}
+
+.legendVerdict {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+.legendVerdict .glyph {
+  width: 1rem;
+  height: 1rem;
+  font-size: var(--text-tab);
+}
+
+.legendNote {
+  color: var(--ink-dim);
+}
+
+/* On paper no week row splits across a page, and the colours print. */
+@media print {
+  .grid {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    font-size: var(--text-label);
+  }
+
+  .grid tr {
+    break-inside: avoid;
+  }
+
+  .corner {
+    width: 8rem;
+  }
+
+  .legend {
+    break-inside: avoid;
+  }
+}

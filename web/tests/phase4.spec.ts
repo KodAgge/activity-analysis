@@ -1,6 +1,13 @@
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { distanceKeyLabel } from '../src/format'
+
+/**
+ * `/trends` over the whole history. The view's default is the last 12
+ * months counted back from today, and the fixture store's runs are dated,
+ * so a bare `/trends` would draw nothing once they are a year old.
+ */
+const TRENDS_ALL_TIME = '/trends?period=all'
 
 /**
  * The browser suite for the phase 4 views, `/trends` and `/progression`.
@@ -45,6 +52,16 @@ async function emptyEndpoints(page: Page, paths: readonly string[]): Promise<str
 /** The skip reason, naming the endpoints that are still empty rather than skipping bare. */
 function needsRows(empty: string[]): string {
   return `needs rows a recompute has not written; still empty on this store: ${empty.join(', ')}`
+}
+
+/**
+ * Whether `/api/training-load` carries a week with TRIMP, which is when the
+ * Trends view draws its training load chart rather than saying no run has a
+ * heart rate and a resting and maximum heart rate to weigh it by.
+ */
+async function loadIsWeighed(page: Page): Promise<boolean> {
+  const body = (await (await page.request.get('/api/training-load?runs=false')).json()) as { weeks?: { trimp: number }[] }
+  return (body.weeks ?? []).some((w) => w.trimp > 0)
 }
 
 async function progressionRows(page: Page, key: string): Promise<{ items: { activity_id: string; is_record: boolean; is_eligible: boolean; elapsed_time_s: number }[]; effort_count: number; eligible_count: number }> {
@@ -104,6 +121,24 @@ async function waitForStableCount(page: Page, selector: string, minimum: number)
     { selector, minimum },
     { polling: 'raf' },
   )
+}
+
+/**
+ * Waits until `chart`'s box holds still across two animation frames, so a
+ * pointer moved to it lands where the plot is rather than where it was
+ * before a scroll or a late chart above it moved it.
+ */
+async function waitForBoxToSettle(page: Page, chart: Locator): Promise<void> {
+  const frame = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(null))))
+  await expect
+    .poll(async () => {
+      const first = await chart.boundingBox()
+      await frame()
+      await frame()
+      const second = await chart.boundingBox()
+      return first !== null && second !== null && first.y === second.y && first.height === second.height
+    })
+    .toBe(true)
 }
 
 /**
@@ -255,7 +290,7 @@ test('on a store with no phase 4 rows, both views state the absence in words', a
     `the phase 4 tables have rows now (${['/api/trends', '/api/fitness'].filter((p) => !empty.includes(p)).join(', ')}); the absence state is covered by the unit tests`,
   )
 
-  await page.goto('/trends')
+  await page.goto(TRENDS_ALL_TIME)
   const notes = page.getByRole('note')
   await expect(notes.filter({ hasText: /No efficiency fit/ })).toBeVisible()
   await expect(notes.filter({ hasText: /No VO2max/ })).toBeVisible()
@@ -267,7 +302,7 @@ test('neither phase 4 page scrolls sideways at the width that caught the previou
   // is a phone in portrait.
   for (const width of [606, 390]) {
     await page.setViewportSize({ width, height: 900 })
-    for (const path of ['/trends', '/progression?distance=5k']) {
+    for (const path of [TRENDS_ALL_TIME, '/progression?distance=5k']) {
       await page.goto(path)
       await page.locator('h1').first().waitFor()
       await page.waitForLoadState('networkidle')
@@ -292,7 +327,7 @@ test('/trends draws all three reference-pace series and the model-output caveat 
     references: { slow_mps: number; median_mps: number; fast_mps: number }
   }
 
-  await page.goto('/trends')
+  await page.goto(TRENDS_ALL_TIME)
   const hrLegend = page.getByRole('list', { name: 'Heart rate at the reference paces legend' })
   // Four entries: three smoothed lines plus the one raw scatter for the
   // median reference, which is there so the smoothing cannot hide its own
@@ -308,17 +343,56 @@ test('/trends draws all three reference-pace series and the model-output caveat 
     await expect(hrLegend.getByText(label, { exact: true })).toBeVisible()
   }
   await expect(page.getByText(/level is a model output/i)).toBeVisible()
-  // Four charts, not five: VO2max, heart rate, cadence and decoupling. The
-  // cadence slope states its finding and draws nothing, because the
-  // quantity does not trend - see `docs/reference/frontend.md`.
-  await expect(page.locator('canvas')).toHaveCount(4)
+  // VO2max, heart rate, cadence and decoupling, and the training load when
+  // a run carries TRIMP. The cadence slope states its finding and draws
+  // nothing, because the quantity does not trend - see
+  // `docs/reference/frontend.md`.
+  const weighed = await loadIsWeighed(page)
+  await expect(page.locator('canvas')).toHaveCount(weighed ? 5 : 4)
+})
+
+test('/trends draws the training load section with its figures, its key and a readout', async ({ page }) => {
+  test.skip(!(await loadIsWeighed(page)), needsRows(['/api/training-load']))
+
+  await openSettled(page, TRENDS_ALL_TIME)
+  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Training load' }) })
+  const chart = section.getByRole('img', { name: 'Training load' })
+  await chart.locator('canvas').waitFor()
+  await expect(section.getByText('Heart-rate TRIMP per week, with fitness and fatigue as weekly means')).toBeVisible()
+  for (const label of ['Fitness (CTL)', 'Fatigue (ATL)', 'Form']) {
+    await expect(section.getByText(label, { exact: true })).toBeVisible()
+  }
+  const legend = section.getByRole('list', { name: 'Training load legend' })
+  await expect(legend.getByRole('listitem')).toHaveCount(5)
+
+  // The canvas is built at the height of the box the stylesheet gives it,
+  // so neither is cut off nor leaves a gap under the date axis.
+  await waitForBoxToSettle(page, chart)
+  const heights = await chart.evaluate((box) => ({
+    box: box.getBoundingClientRect().height,
+    canvas: box.querySelector('canvas')?.getBoundingClientRect().height,
+  }))
+  expect(heights.box).toBeGreaterThan(0)
+  expect(heights.canvas).toBe(heights.box)
+
+  // The readout names the week under the pointer, and the chart keeps its
+  // height while it shows, for the reason `UPlot.tsx` records.
+  await chart.scrollIntoViewIfNeeded()
+  await waitForBoxToSettle(page, chart)
+  const before = await chart.boundingBox()
+  const plot = await chart.locator('.u-over').boundingBox()
+  if (before === null || plot === null) throw new Error('the training load chart has no box')
+  await page.mouse.move(plot.x + plot.width * 0.5, plot.y + plot.height * 0.3)
+  await expect(page.getByTestId('load-readout')).toBeVisible()
+  await expect(page.getByTestId('load-readout')).toContainText(/Week of/i)
+  expect((await chart.boundingBox())?.height).toBe(before.height)
 })
 
 test('the decoupling chart draws its 5% durability line and names its population', async ({ page }) => {
   const empty = await emptyEndpoints(page, ['/api/trends'])
   test.skip(empty.length > 0, needsRows(empty))
 
-  await page.goto('/trends')
+  await page.goto(TRENDS_ALL_TIME)
   const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Aerobic decoupling' }) })
   await section.locator('canvas').waitFor()
 
@@ -334,7 +408,7 @@ test('every trend line on the screen is drawn at one width, so weight never enco
   const empty = await emptyEndpoints(page, ['/api/trends', '/api/fitness'])
   test.skip(empty.length > 0, needsRows(empty))
 
-  await openSettled(page, '/trends')
+  await openSettled(page, TRENDS_ALL_TIME)
 
   // Read off the legend swatches, which carry the same width the canvas
   // strokes: weight used to encode the ordering - a 1px line against a
@@ -382,16 +456,16 @@ test('hovering a trend chart leaves its height unchanged', async ({ page }) => {
   const empty = await emptyEndpoints(page, ['/api/trends', '/api/fitness'])
   test.skip(empty.length > 0, needsRows(empty))
 
-  await openSettled(page, '/trends')
+  await openSettled(page, TRENDS_ALL_TIME)
   const chart = page.getByRole('img', { name: 'Heart rate at the reference paces' })
   await chart.locator('canvas').waitFor()
-  // The heart rate chart is the third section now rather than the first, so
+  // The heart rate chart is the fourth section now rather than the first, so
   // it sits below the fold: `boundingBox` reports page coordinates while
   // `mouse.move` takes viewport ones, and without this the pointer went to
   // a point that was over nothing and the readout never appeared. Same
   // class of trap as `openSettled`'s own, one scroll position further on.
   await chart.scrollIntoViewIfNeeded()
-  await page.waitForTimeout(250)
+  await waitForBoxToSettle(page, chart)
   const before = await chart.boundingBox()
   if (before === null) throw new Error('the heart rate chart has no box')
 
@@ -671,7 +745,7 @@ test("the VO2max chart draws Garmin's own line and readout when a Garmin export 
   const fitness = { ...real, device: real.device.length > 0 ? real.device : device }
   await page.route('**/api/fitness', (route) => route.fulfill({ json: fitness }))
 
-  await page.goto('/trends')
+  await page.goto(TRENDS_ALL_TIME)
   const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'VO2max' }) })
   await expect(section.getByRole('list', { name: /legend$/ })).toContainText('Garmin (watch)')
   const latest = fitness.device.at(-1)?.vo2max_reported

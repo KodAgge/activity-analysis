@@ -213,3 +213,19 @@ describe('the /territory route', () => {
     expect(kept.state.location.search).toEqual({ region: 'abc' })
   })
 })
+
+describe('the /plan routes', () => {
+  it('keep a bare /plan, whose default version only the payload knows', async () => {
+    const testRouter = await loadAt('/plan')
+    expect(testRouter.state.location.pathname).toBe('/plan')
+    expect(testRouter.state.location.search).toEqual({})
+  })
+
+  it('redirect an unknown key and a malformed version away on both paths, keeping the goal', async () => {
+    const bare = await loadAt('/plan?version=latest&week=2')
+    expect(bare.state.location.search).toEqual({})
+    const goal = await loadAt('/plan/5k-2027-03-13?version=2&week=2')
+    expect(goal.state.location.pathname).toBe('/plan/5k-2027-03-13')
+    expect(goal.state.location.search).toEqual({ version: 2 })
+  })
+})

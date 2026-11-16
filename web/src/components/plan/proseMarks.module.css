@@ -1,0 +1,40 @@
+/*
+ * Claude's prose on the plan's verdict cards (the assessment, a proposal's
+ * reasons), set as Runna sets its insight cards: each block's label a
+ * small uppercase eyebrow in dim ink rather than a bold run-in word, and
+ * lists without an indented bullet, a small round mark in the text's own
+ * colour hung in the margin. Added beside `PlanProse`'s own class, so it
+ * only restyles: `PlanProse` keeps the structure.
+ */
+.marked strong,
+.eyebrow {
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  line-height: var(--leading-tight);
+  text-transform: uppercase;
+}
+
+.marked ul {
+  gap: var(--space-2);
+  padding-left: 0;
+  list-style: none;
+}
+
+.marked li {
+  position: relative;
+  padding-left: var(--space-4);
+}
+
+/* Centred on the first line: half the line's height, less half the dot. */
+.marked li::before {
+  content: '';
+  position: absolute;
+  top: calc(var(--leading-body) * 0.5em - 2.5px);
+  left: 1px;
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: currentcolor;
+}

@@ -46,6 +46,7 @@ function activityFixture(overrides: Partial<ActivitySummary> = {}): ActivitySumm
     calories: 660.0,
     source: 'strava_fit',
     pr_distance_keys: [],
+    effort_tags: [],
     ...overrides,
   }
 }

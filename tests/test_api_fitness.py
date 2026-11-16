@@ -105,3 +105,15 @@ def test_the_endpoint_serves_an_empty_device_list_when_no_garmin_export_was_inge
     api_client: TestClient,
 ) -> None:
     assert api_client.get("/api/fitness").json()["device"] == []
+
+
+def test_fitness_on_gives_garmins_unrounded_vo2max(device_store: duckdb.DuckDBPyConnection) -> None:
+    # The plan's VO2max outlook is drawn to a decimal, so the value it starts
+    # from is maxMet x 3.5 as stored, not the whole number the watch shows.
+    device_store.execute(
+        "CREATE TABLE fitness_series (activity_id VARCHAR, start_time_utc TIMESTAMPTZ, "
+        "hr_vo2max_smoothed DOUBLE, vdot DOUBLE); "
+        "CREATE TABLE activities (activity_id VARCHAR, utc_offset_s INTEGER)"
+    )
+    on = queries.fitness_on(device_store.cursor(), on=dt.date(2026, 3, 1))
+    assert on["garmin_vo2max"] == 50.38

@@ -1,7 +1,15 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  RouterProvider,
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+} from '@tanstack/react-router'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { components } from '../api/schema'
+import type { TrainingLoadChartProps } from '../charts/TrainingLoadChart'
 import type { TrendChartProps } from '../charts/TrendChart'
 import { linearTrend } from '../charts/trendsFindings'
 import { NO_VALUE, localCalendarTime, trimmedNumber } from '../format'
@@ -13,10 +21,13 @@ type FitnessPoint = components['schemas']['FitnessPoint']
 type DeviceVo2maxPoint = components['schemas']['DeviceVo2maxPoint']
 type Predictions = components['schemas']['Predictions']
 type ReferencePaces = components['schemas']['ReferencePacesOut']
+type TrainingLoad = components['schemas']['TrainingLoad']
+type LoadWeek = components['schemas']['LoadWeek']
 
-const { getMock, trendChartCalls } = vi.hoisted(() => ({
+const { getMock, trendChartCalls, loadChartCalls } = vi.hoisted(() => ({
   getMock: vi.fn(),
   trendChartCalls: [] as TrendChartProps[],
+  loadChartCalls: [] as TrainingLoadChartProps[],
 }))
 vi.mock('../api/client', () => ({ api: { GET: getMock } }))
 
@@ -36,6 +47,14 @@ vi.mock('../charts/TrendChart', () => ({
         ))}
       </div>
     )
+  },
+}))
+
+/** Same reason as `TrendChart`'s stub: what the view hands the chart is this file's to check, not how it draws. */
+vi.mock('../charts/TrainingLoadChart', () => ({
+  TrainingLoadChart: (props: TrainingLoadChartProps) => {
+    loadChartCalls.push(props)
+    return <div data-testid="load-chart" role="img" aria-label={props.ariaLabel} />
   },
 }))
 
@@ -105,6 +124,32 @@ function fitnessPoint(overrides: Partial<FitnessPoint> = {}): FitnessPoint {
   }
 }
 
+function loadWeek(weekStart: string, overrides: Partial<LoadWeek> = {}): LoadWeek {
+  return {
+    week_start: weekStart,
+    days: 7,
+    trimp: 300,
+    ctl_mean: 40,
+    atl_mean: 50,
+    form_mean: -10,
+    distance_m: 30000,
+    ...overrides,
+  }
+}
+
+/** Two complete weeks and the current, unfinished one, with one day each: synthetic and round. */
+const TRAINING_LOAD: TrainingLoad = {
+  days: [
+    { local_date: '2025-10-12', trimp: 120, ctl: 44, atl: 58, form: -14, distance_m: 10000, distance_7d_m: 31000 },
+  ],
+  weeks: [
+    loadWeek('2025-09-29', { trimp: 410, ctl_mean: 42, atl_mean: 55, form_mean: -13 }),
+    loadWeek('2025-10-06', { trimp: 460, ctl_mean: 44.4, atl_mean: 61.6, form_mean: -17.2 }),
+    loadWeek('2025-10-13', { days: 3, trimp: 150, ctl_mean: 46, atl_mean: 70, form_mean: -24 }),
+  ],
+  runs: [],
+}
+
 const NO_PREDICTIONS: Predictions = {
   items: [],
   insufficient_data: true,
@@ -116,13 +161,16 @@ function mockApi({
   fitness = [fitnessPoint()],
   device = [],
   predictions = NO_PREDICTIONS,
+  trainingLoad = TRAINING_LOAD,
 }: {
   trends?: TrendsResponse
   fitness?: FitnessPoint[]
   device?: DeviceVo2maxPoint[]
   predictions?: Predictions
+  trainingLoad?: TrainingLoad
 } = {}): void {
   getMock.mockImplementation((path: string) => {
+    if (path === '/api/training-load') return Promise.resolve({ data: trainingLoad, error: undefined })
     if (path === '/api/trends') return Promise.resolve({ data: trends, error: undefined })
     if (path === '/api/fitness') return Promise.resolve({ data: { items: fitness, device }, error: undefined })
     if (path === '/api/predictions') return Promise.resolve({ data: predictions, error: undefined })
@@ -130,15 +178,35 @@ function mockApi({
   })
 }
 
-function renderTrends() {
+/**
+ * Opens on all time unless told otherwise: the fixtures are dated, and the
+ * view's own default, the last 12 months, is counted back from the day the
+ * suite runs, so a test that relied on it would start failing a year after
+ * its dates. The default is tested on its own, against a pinned clock.
+ */
+function renderTrends(initialPath = '/?period=all') {
+  const rootRoute = createRootRoute()
+  const trendsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/',
+    // The real route validates in `router.tsx`; the view re-validates on
+    // its own regardless, which is what this harness exercises.
+    validateSearch: (search: Record<string, unknown>) => search,
+    component: Trends,
+  })
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([trendsRoute]),
+    history: createMemoryHistory({ initialEntries: [initialPath] }),
+  })
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   })
-  return render(
+  const utils = render(
     <QueryClientProvider client={queryClient}>
-      <Trends />
+      <RouterProvider router={router} />
     </QueryClientProvider>,
   )
+  return { ...utils, router }
 }
 
 function chartCalled(ariaLabel: string): TrendChartProps {
@@ -150,6 +218,7 @@ function chartCalled(ariaLabel: string): TrendChartProps {
 beforeEach(() => {
   getMock.mockReset()
   trendChartCalls.length = 0
+  loadChartCalls.length = 0
 })
 
 describe('Trends', () => {
@@ -175,6 +244,7 @@ describe('Trends', () => {
     expect(headings).toEqual([
       'VO2max',
       'Race predictions',
+      'Training load',
       'Heart rate at the reference paces',
       'Cadence at the reference paces',
       'Aerobic decoupling',
@@ -1177,5 +1247,335 @@ describe('Trends copy, computed from the viewer’s own history', () => {
     expect(section).toHaveTextContent(/times its own standard error: it falls over this history\./)
     expect(section).not.toHaveTextContent(/not distinguishable/)
     expect(section).not.toHaveTextContent(/improvement/i)
+  })
+})
+
+describe('Trends training load', () => {
+  function loadSection(): HTMLElement {
+    const heading = screen.getByRole('heading', { level: 2, name: 'Training load' })
+    const section = heading.closest('section')
+    if (section === null) throw new Error('the training load heading is not in a section')
+    return section
+  }
+
+  it('Trends shows the training load section', async () => {
+    mockApi()
+    renderTrends()
+    await screen.findByTestId('load-chart')
+    const section = loadSection()
+    expect(within(section).getByText('Heart-rate TRIMP per week, with fitness and fatigue as weekly means')).toBeInTheDocument()
+    // The chart is handed the payload's own series, untouched.
+    const call = loadChartCalls.at(-1)
+    expect(call?.weeks).toEqual(TRAINING_LOAD.weeks)
+    expect(call?.days).toEqual(TRAINING_LOAD.days)
+    // The collapsed note names the Swedish words and the two quantities.
+    const about = within(section).getByText('What this measures').closest('details')
+    expect(about).not.toBeNull()
+    expect(about?.textContent).toMatch(/kondition/)
+    expect(about?.textContent).toMatch(/trötthet/)
+    expect(about?.textContent).toMatch(/three runs a week/)
+    expect(about?.textContent).toMatch(/TRIMP measures the heart/)
+  })
+
+  it('the figures use the latest complete week, not the current one', async () => {
+    mockApi()
+    renderTrends()
+    await screen.findByTestId('load-chart')
+    const section = loadSection()
+    // The week of 6 October, the latest with seven days; the week of 13
+    // October is three days in and is not read.
+    const figure = (label: string) => within(section).getByText(label).closest('div')
+    expect(figure('Fitness (CTL)')).toHaveTextContent('44')
+    expect(figure('Fatigue (ATL)')).toHaveTextContent('62')
+    expect(figure('Form')).toHaveTextContent('-17')
+    expect(section).toHaveTextContent(/week of 6 October 2025/)
+    expect(section).not.toHaveTextContent(/\b70\b/)
+  })
+
+  it('says the figures are per day, while the lines are times seven', async () => {
+    mockApi()
+    renderTrends()
+    await screen.findByTestId('load-chart')
+    const section = loadSection()
+    for (const label of ['Fitness (CTL)', 'Fatigue (ATL)', 'Form']) {
+      expect(within(section).getByText(label).closest('div')).toHaveTextContent(/per day/)
+    }
+    expect(within(section).getByText('What this measures').closest('details')?.textContent).toMatch(/per-day means/)
+  })
+
+  it('does not read a week that runs past the end of the period', async () => {
+    // A custom period through Wednesday 8 October 2025: the week of 6
+    // October is stored with seven days, but four of them are after it.
+    mockApi()
+    renderTrends('/?period=custom&from=2025-09-01&to=2025-10-09')
+    await screen.findByTestId('load-chart')
+    expect(loadSection()).toHaveTextContent(/week of 29 September 2025/)
+  })
+
+  it('draws a period shorter than a week when its days carry TRIMP', async () => {
+    mockApi({ trainingLoad: { days: TRAINING_LOAD.days, weeks: [], runs: [] } })
+    renderTrends('/?period=custom&from=2025-10-10&to=2025-10-13')
+    expect(await screen.findByTestId('load-chart')).toBeInTheDocument()
+  })
+
+  // Zero TRIMP everywhere is also what runs with heart rate give when no
+  // resting or maximum heart rate covers them, so the sentence names both.
+  it('says so when no run has TRIMP', async () => {
+    mockApi({
+      trainingLoad: {
+        days: TRAINING_LOAD.days.map((d) => ({ ...d, trimp: 0 })),
+        weeks: [loadWeek('2025-10-06', { trimp: 0 })],
+        runs: [],
+      },
+    })
+    renderTrends()
+    await screen.findByRole('heading', { level: 2, name: 'Training load' })
+    const section = loadSection()
+    expect(await within(section).findByText('No run has a heart rate and a resting and maximum heart rate to weigh it by yet.')).toBeInTheDocument()
+    expect(within(section).queryByTestId('load-chart')).toBeNull()
+  })
+
+  it('asks for the period, through its last day, since the endpoint takes both dates inclusive', async () => {
+    mockApi()
+    renderTrends('/?period=year_2025')
+    await screen.findByTestId('load-chart')
+    const call = getMock.mock.calls.find(([path]) => path === '/api/training-load')
+    expect(call?.[1]).toEqual({ params: { query: { from: '2025-01-01', to: '2025-12-31', runs: false } } })
+  })
+
+  it('asks for the whole history on all time, without the runs it never reads', async () => {
+    mockApi()
+    renderTrends()
+    await screen.findByTestId('load-chart')
+    const call = getMock.mock.calls.find(([path]) => path === '/api/training-load')
+    expect(call?.[1]).toEqual({ params: { query: { runs: false } } })
+  })
+
+  it('names the period when the period has no TRIMP', async () => {
+    mockApi({ trainingLoad: { days: [], weeks: [], runs: [] } })
+    renderTrends('/?period=year_2025')
+    await screen.findByRole('heading', { level: 2, name: 'Training load' })
+    const reason = 'No run in this period has a heart rate and a resting and maximum heart rate to weigh it by.'
+    expect(await within(loadSection()).findByText(reason)).toBeInTheDocument()
+  })
+
+  it('renders a failed request as an alert inside the section', async () => {
+    mockApi()
+    const served = getMock.getMockImplementation()
+    getMock.mockImplementation((path: string) =>
+      path === '/api/training-load'
+        ? Promise.resolve({ data: undefined, error: { detail: 'no training load table' } })
+        : served?.(path),
+    )
+    renderTrends()
+    await screen.findByRole('heading', { level: 2, name: 'Training load' })
+    expect(await within(loadSection()).findByRole('alert')).toHaveTextContent(/no training load table/)
+  })
+})
+
+describe('Trends period', () => {
+  // Pinned so "the last 12 months" names the same days whenever the suite
+  // runs; only `Date` is faked, so the queries' own timers still run.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 10, 14, 12, 0))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const OLD = '2025-06-01T08:00:00Z'
+  const SPRING = '2026-03-01T08:00:00Z'
+  const RECENT = '2026-10-01T08:00:00Z'
+
+  function mockHistory(): void {
+    mockApi({
+      trends: trendsFixture([
+        trendPoint({ activity_id: 'old', start_time_utc: OLD }),
+        trendPoint({ activity_id: 'spring', start_time_utc: SPRING }),
+        trendPoint({ activity_id: 'recent', start_time_utc: RECENT }),
+      ]),
+      fitness: [
+        fitnessPoint({ activity_id: 'old', start_time_utc: OLD }),
+        fitnessPoint({ activity_id: 'spring', start_time_utc: SPRING }),
+        fitnessPoint({ activity_id: 'recent', start_time_utc: RECENT }),
+      ],
+      device: [
+        { calendar_date: '2025-06-01', vo2max: 44.62, vo2max_reported: 45 },
+        { calendar_date: '2026-10-01', vo2max: 45.62, vo2max_reported: 46 },
+      ],
+    })
+  }
+
+  /** The instants a chart's named series carries, so a test can say which runs reached it. */
+  function instantsOf(ariaLabel: string, label: string): number[] {
+    const s = chartCalled(ariaLabel).series.find((series) => series.label === label)
+    if (s === undefined) throw new Error(`no series "${label}" on "${ariaLabel}"`)
+    return s.points.map((point) => point.t)
+  }
+
+  const at = (utc: string) => localCalendarTime(utc, 7200)
+  const day = (date: string) => localCalendarTime(`${date}T00:00:00Z`, 0)
+
+  it('draws the last 12 months by default, on every chart', async () => {
+    mockHistory()
+    renderTrends('/')
+    expect(await screen.findByRole('combobox', { name: 'Period' })).toHaveValue('last_12_months')
+    await waitFor(() => {
+      expect(instantsOf('Heart rate at the reference paces', '6:15/km')).toEqual([at(SPRING), at(RECENT)])
+    })
+    expect(instantsOf('Cadence at the reference paces', '6:15/km')).toEqual([at(SPRING), at(RECENT)])
+    expect(instantsOf('Aerobic decoupling', 'Decoupling, 90-day mean')).toEqual([at(SPRING), at(RECENT)])
+    await waitFor(() => {
+      expect(instantsOf('VO2max', 'Heart rate based, 42-day mean')).toEqual([at(SPRING), at(RECENT)])
+    })
+    expect(instantsOf('VO2max', 'Heart rate based, per run')).toEqual([at(SPRING), at(RECENT)])
+    expect(instantsOf('VO2max', 'Garmin (watch)')).toEqual([day('2025-11-14'), day('2026-10-01')])
+  })
+
+  it('runs Garmin’s line from the window’s start at the value the watch held then', async () => {
+    mockHistory()
+    renderTrends('/')
+    await waitFor(() => {
+      expect(chartCalled('VO2max').series.find((s) => s.label === 'Garmin (watch)')?.points).toEqual([
+        { t: day('2025-11-14'), v: 44.62 },
+        { t: day('2026-10-01'), v: 45.62 },
+      ])
+    })
+  })
+
+  it('carries no Garmin value in when nothing precedes the window', async () => {
+    mockHistory()
+    renderTrends('/?period=year_2025')
+    await waitFor(() => {
+      expect(chartCalled('VO2max').series.find((s) => s.label === 'Garmin (watch)')?.points).toEqual([
+        { t: day('2025-06-01'), v: 44.62 },
+      ])
+    })
+  })
+
+  it('draws the whole history once all time is chosen, and says so in the URL', async () => {
+    mockHistory()
+    const { router } = renderTrends('/')
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Period' }), { target: { value: 'all' } })
+    await waitFor(() => {
+      expect(router.state.location.search).toEqual({ period: 'all' })
+    })
+    await waitFor(() => {
+      expect(instantsOf('Heart rate at the reference paces', '6:15/km')).toEqual([at(OLD), at(SPRING), at(RECENT)])
+    })
+    expect(instantsOf('VO2max', 'Heart rate based, per run')).toEqual([at(OLD), at(SPRING), at(RECENT)])
+    expect(instantsOf('VO2max', 'Garmin (watch)')).toEqual([day('2025-06-01'), day('2026-10-01')])
+  })
+
+  it('offers every year holding a run, newest first', async () => {
+    mockHistory()
+    renderTrends('/')
+    const select = await screen.findByRole('combobox', { name: 'Period' })
+    await waitFor(() => {
+      expect(within(select).getByRole('option', { name: '2026' })).toBeInTheDocument()
+    })
+    const years = within(select)
+      .getAllByRole('option')
+      .map((option) => option.textContent)
+      .filter((text) => text !== null && /^\d{4}$/.test(text))
+    expect(years).toEqual(['2026', '2025'])
+  })
+
+  it('marks the latest point only when the period reaches it, since the stat above names the latest stored value', async () => {
+    mockHistory()
+    renderTrends('/?period=year_2025')
+    await waitFor(() => {
+      expect(instantsOf('Heart rate at the reference paces', '6:15/km')).toEqual([at(OLD)])
+    })
+    const median = chartCalled('Heart rate at the reference paces').series.find((s) => s.label === '6:15/km')
+    expect(median?.markLatest).toBe(false)
+    expect(chartCalled('Aerobic decoupling').series[0]?.markLatest).toBe(false)
+    await waitFor(() => {
+      expect(instantsOf('VO2max', 'Heart rate based, 42-day mean')).toEqual([at(OLD)])
+    })
+    for (const s of chartCalled('VO2max').series) expect(s.markLatest ?? false).toBe(false)
+  })
+
+  it('marks no Garmin point when the watch’s latest update falls before the window', async () => {
+    mockApi({
+      trends: trendsFixture([trendPoint({ activity_id: 'recent', start_time_utc: RECENT })]),
+      fitness: [fitnessPoint({ activity_id: 'recent', start_time_utc: RECENT })],
+      device: [{ calendar_date: '2025-06-01', vo2max: 44.62, vo2max_reported: 45 }],
+    })
+    renderTrends('/')
+    await waitFor(() => {
+      expect(chartCalled('VO2max').series.find((s) => s.label === 'Garmin (watch)')?.points).toEqual([
+        { t: day('2025-11-14'), v: 44.62 },
+      ])
+    })
+    expect(chartCalled('VO2max').series.find((s) => s.label === 'Garmin (watch)')?.markLatest).toBe(false)
+  })
+
+  it('marks the latest point when the period does reach it', async () => {
+    mockHistory()
+    renderTrends('/')
+    await waitFor(() => {
+      expect(instantsOf('VO2max', 'Heart rate based, 42-day mean')).toEqual([at(SPRING), at(RECENT)])
+    })
+    const median = chartCalled('Heart rate at the reference paces').series.find((s) => s.label === '6:15/km')
+    expect(median?.markLatest).toBe(true)
+    expect(chartCalled('VO2max').series.find((s) => s.label === 'Garmin (watch)')?.markLatest).toBe(true)
+  })
+
+  it('draws no Garmin line in a window with no VO2max estimate, even with a watch value in force', async () => {
+    mockHistory()
+    renderTrends('/?period=custom&from=2026-04-01&to=2026-09-01')
+    await waitFor(() => {
+      expect(chartCalled('VO2max').emptyReason).toBe('No run in this period has a VO2max estimate.')
+    })
+    expect(chartCalled('VO2max').series.every((s) => s.points.length === 0)).toBe(true)
+  })
+
+  it('marks each line against its own latest stored point, not the latest run', async () => {
+    mockApi({
+      trends: trendsFixture([
+        trendPoint({ activity_id: 'spring', start_time_utc: SPRING }),
+        trendPoint({
+          activity_id: 'short',
+          start_time_utc: RECENT,
+          is_aerobic_long_run: false,
+          decoupling_smoothed_pct: null,
+          fit_seconds: 1200,
+        }),
+      ]),
+    })
+    renderTrends('/?period=custom&from=2026-01-01&to=2026-09-01')
+    await waitFor(() => {
+      expect(instantsOf('Aerobic decoupling', 'Decoupling, 90-day mean')).toEqual([at(SPRING)])
+    })
+    expect(chartCalled('Aerobic decoupling').series[0]?.markLatest).toBe(true)
+    const median = chartCalled('Heart rate at the reference paces').series.find((s) => s.label === '6:15/km')
+    expect(median?.markLatest).toBe(false)
+  })
+
+  it('names the period, not the history, when a chart has nothing in it', async () => {
+    mockHistory()
+    renderTrends('/?period=custom&from=2024-01-01&to=2024-02-01')
+    await waitFor(() => {
+      expect(chartCalled('Heart rate at the reference paces').emptyReason).toBe('No run in this period has a heart rate fit.')
+    })
+    expect(chartCalled('Cadence at the reference paces').emptyReason).toBe('No run in this period has a cadence fit.')
+    await waitFor(() => {
+      expect(chartCalled('VO2max').emptyReason).toBe('No run in this period has a VO2max estimate.')
+    })
+  })
+
+  it('keeps the per-run VO2max points out of the axis, and says the axis leaves some off', async () => {
+    mockHistory()
+    renderTrends('/')
+    await waitFor(() => {
+      expect(chartCalled('VO2max').series.find((s) => s.label === 'Heart rate based, per run')?.ignoredByScale).toBe(true)
+    })
+    for (const s of chartCalled('VO2max').series.filter((series) => series.label !== 'Heart rate based, per run')) {
+      expect(s.ignoredByScale ?? false).toBe(false)
+    }
+    const section = screen.getByRole('heading', { name: 'VO2max' }).closest('section')
+    expect(section).toHaveTextContent(/The axis is fitted to the lines rather than to those points/)
   })
 })

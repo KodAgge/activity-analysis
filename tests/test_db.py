@@ -21,6 +21,21 @@ def test_views_exist_and_are_empty_before_ingestion(tmp_path: Path):
         assert con.execute("SELECT count(*) FROM streams").fetchone()[0] == 0
 
 
+def test_resting_hr_view_exists(tmp_path: Path):
+    paths = Paths(root=tmp_path)
+    paths.ensure()
+    with connect(paths) as con:
+        assert con.execute("SELECT count(*) FROM resting_hr").fetchone()[0] == 0
+        columns = [row[0] for row in con.execute("DESCRIBE resting_hr").fetchall()]
+    assert columns == [
+        "athlete_id",
+        "calendar_date",
+        "resting_hr_bpm",
+        "record_version",
+        "source_file_sha256",
+    ]
+
+
 def test_queries_ingested_data(tmp_path: Path, all_fit_fixtures: list[Path]):
     root = tmp_path / "dump"
     root.mkdir()
@@ -221,6 +236,26 @@ def test_a_cursor_can_read_the_views_of_an_empty_store(tmp_path: Path):
     cur = con.cursor()
     for table in ("activities", "laps", "streams", "streams_1hz", "best_efforts"):
         assert cur.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == 0
+
+
+def test_new_derived_views_exist(tmp_path: Path):
+    """The threshold and load tables are views on a store never recomputed."""
+    with connect(Paths(root=tmp_path)) as con:
+        for view in (
+            "threshold_readings",
+            "run_load",
+            "zone_time_estimated",
+            "hr_histogram",
+            "training_load",
+            "training_load_weekly",
+        ):
+            row = con.execute(f"SELECT count(*) FROM {view}").fetchone()
+            assert row is not None and row[0] == 0
+        reading_ids = con.execute(
+            "SELECT data_type FROM information_schema.columns "
+            "WHERE table_name = 'run_load' AND column_name = 'reading_ids'"
+        ).fetchone()
+        assert reading_ids is not None and reading_ids[0] == "VARCHAR[]"
 
 
 def test_read_grid_returns_the_activitys_own_rows(ingested_store: Paths):

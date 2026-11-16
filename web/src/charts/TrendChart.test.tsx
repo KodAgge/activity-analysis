@@ -205,6 +205,71 @@ describe('TrendChart', () => {
     expect(max).toBeGreaterThanOrEqual(200)
   })
 
+  it('fits the axis to the other series alone when a scatter is ignored by the scale, and draws only its points inside it', () => {
+    renderChart([
+      { label: 'Smoothed', points: DAYS.map((t, i) => ({ t, v: [41, 42, 43, 44][i] ?? null })) },
+      {
+        label: 'Per run',
+        scatter: true,
+        faint: true,
+        ignoredByScale: true,
+        points: DAYS.map((t, i) => ({ t, v: [20, 42.5, 43.5, 70][i] ?? null })),
+      },
+    ])
+    const opts = lastInstance().opts
+    const splits = opts.axes?.[1]?.splits
+    if (typeof splits !== 'function') throw new Error('the y axis has no splits')
+    // The ladder covers the smoothed line's 41 to 44 and nothing near the
+    // per-run 20 or 70; with them it would reach from 20 to 70.
+    const ticks = splits({} as uPlot, 1, 0, 0, 0, 0) as number[]
+    expect(Math.min(...ticks)).toBeGreaterThanOrEqual(40)
+    expect(Math.max(...ticks)).toBeLessThanOrEqual(45)
+    // Not split into a strip: the ignored series is what would have widened it.
+    expect(opts.scales?.ctx).toBeUndefined()
+
+    const filter = seriesOptions()[1]?.points?.filter
+    if (typeof filter !== 'function') throw new Error('the ignored scatter has no point filter')
+    const chart = {
+      series: opts.series,
+      scales: { y: { min: 40, max: 45 } },
+      data: lastInstance().data,
+    } as unknown as uPlot
+    expect(filter(chart, 2, true)).toEqual([1, 2])
+  })
+
+  it('draws a line with a single value as that one point, in its own colour', () => {
+    // uPlot strokes no path through one point, so without it a window
+    // holding one value of a line would show an empty plot.
+    renderChart([
+      { label: 'Lone', points: DAYS.map((t, i) => ({ t, v: i === 2 ? 44 : null })) },
+      { label: 'Two', points: DAYS.map((t, i) => ({ t, v: i === 0 || i === 3 ? 45 : null })) },
+    ])
+    const chart = { data: lastInstance().data } as unknown as uPlot
+    const [lone, two] = seriesOptions()
+    const filter = lone?.points?.filter
+    if (typeof filter !== 'function') throw new Error('the line has no point filter')
+    expect(filter(chart, 1, false)).toEqual([2])
+    expect(lone?.points?.fill).toBe(lone?.stroke)
+    // uPlot sizes the hover dot from `points.size`; an override would shrink
+    // it on every line, not only on a lone point.
+    expect(lone?.points?.size).toBeUndefined()
+    const twoFilter = two?.points?.filter
+    if (typeof twoFilter !== 'function') throw new Error('the line has no point filter')
+    expect(twoFilter(chart, 2, false)).toBeNull()
+  })
+
+  it('lets an ignored series set the axis when it is the only one with a value', () => {
+    renderChart([
+      { label: 'Smoothed', points: DAYS.map((t) => ({ t, v: null })) },
+      { label: 'Per run', scatter: true, ignoredByScale: true, points: DAYS.map((t, i) => ({ t, v: 60 + i })) },
+    ])
+    const splits = lastInstance().opts.axes?.[1]?.splits
+    if (typeof splits !== 'function') throw new Error('the y axis has no splits')
+    const ticks = splits({} as uPlot, 1, 0, 0, 0, 0) as number[]
+    expect(Math.min(...ticks)).toBeLessThanOrEqual(60)
+    expect(Math.max(...ticks)).toBeGreaterThanOrEqual(63)
+  })
+
   it('draws a scatter series as points only, faintly, in the palette slot it was tied to', () => {
     renderChart([
       { label: 'Heart rate, smoothed', points: DAYS.map((t) => ({ t, v: 50 })) },

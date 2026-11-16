@@ -1,8 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { describeApiError } from '../api/errors'
+import { inclusiveLastDay, periodRange, todayLocalDate, type DateRange } from '../api/period'
 import { queries } from '../api/queries'
 import type { components } from '../api/schema'
+import {
+  DEFAULT_TRENDS_PERIOD,
+  applyTrendsSearchChange,
+  validateTrendsSearch,
+  type TrendsSearch,
+} from '../api/trendsSearch'
+import { TrainingLoadChart } from '../charts/TrainingLoadChart'
+import { latestCompleteWeek, weighsAnyRun } from '../charts/trainingLoadMath'
 import { TrendChart, type TrendPointDatum, type TrendSeries } from '../charts/TrendChart'
 import {
   MIN_TREND_RUNS,
@@ -21,6 +31,7 @@ import {
   type TrendFinding,
 } from '../charts/trendsFindings'
 import { Absent } from '../components/Absent'
+import { PeriodPicker } from '../components/PeriodPicker'
 import { Section } from '../components/Section'
 import { Stat, StatGroup } from '../components/Stat'
 import { DURABILITY_REFERENCE_PCT } from '../components/decouplingMath'
@@ -28,14 +39,17 @@ import {
   NO_VALUE,
   cadence,
   cadenceMeasure,
+  calendarDate,
   calendarDayLabel,
   calendarDayOfDate,
+  dateOfCalendarDay,
   correlationLabel,
   distance,
   distanceKeyLabel,
   distanceKeyStatesTheDistance,
   duration,
   effortTagLabel,
+  formLabel,
   formatDecoupling,
   formatPredictionBand,
   formatPredictionSpan,
@@ -43,6 +57,7 @@ import {
   formatWholeVo2max,
   heartRate,
   heartRateMeasure,
+  loadLabel,
   localCalendarDay,
   localCalendarTime,
   pace,
@@ -56,7 +71,6 @@ import styles from './Trends.module.css'
 
 type TrendPoint = components['schemas']['TrendPoint']
 type FitnessPoint = components['schemas']['FitnessPoint']
-type DeviceVo2maxPoint = components['schemas']['DeviceVo2maxPoint']
 type Prediction = components['schemas']['Prediction']
 
 /**
@@ -106,6 +120,40 @@ function effortKeysPresent(items: TrendPoint[]): string[] {
  * replaces.
  */
 const PACE_RAMP: [string, string, string] = ['--pace-1', '--pace-2', '--pace-3']
+
+/**
+ * The period's bounds as day numbers on the charts' own axis, `from`
+ * inclusive and `to` exclusive, null for an open end.
+ */
+interface DayWindow {
+  from: number | null
+  to: number | null
+}
+
+function dayWindow(range: DateRange): DayWindow {
+  return {
+    from: range.from === null ? null : calendarDayOfDate(range.from),
+    to: range.to === null ? null : calendarDayOfDate(range.to),
+  }
+}
+
+/** Whether a day number falls inside the window. */
+function inWindow(day: number, window: DayWindow): boolean {
+  if (window.from !== null && day < window.from) return false
+  if (window.to !== null && day >= window.to) return false
+  return true
+}
+
+/**
+ * Whether the window holds the most recent of `days`, which is when a
+ * chart's latest point inside it is also the latest stored one and so the
+ * value the headline stat names. A window ending before it would put the
+ * "current" marker on a point that is not current, and one starting after
+ * it would put the marker on Garmin's value carried to the window's start.
+ */
+function reachesLatest(days: readonly number[], window: DayWindow): boolean {
+  return days.length > 0 && inWindow(Math.max(...days), window)
+}
 
 /** One point per activity from one field, dated on the athlete's own calendar. */
 function pointsFrom(items: TrendPoint[], field: keyof TrendPoint, withNote: boolean): TrendPointDatum[] {
@@ -174,6 +222,7 @@ function paceSeries(
   labels: [string, string, string],
   smoothed: [keyof TrendPoint, keyof TrendPoint, keyof TrendPoint],
   raw: keyof TrendPoint,
+  markLatest: boolean,
 ): TrendSeries[] {
   const lines = labels.map((label, i) => {
     const field = smoothed[i]
@@ -192,7 +241,7 @@ function paceSeries(
       // between two stored columns rather than anything computed here. See
       // `TrendSeries.edge`.
       edge: i !== 1,
-      markLatest: i === 1,
+      markLatest: markLatest && i === 1,
       points: pointsFrom(all, field, true),
     }
   })
@@ -243,15 +292,20 @@ const DURABILITY_REFERENCE_LINE = { value: DURABILITY_REFERENCE_PCT, label: '5% 
  * make this the one place in the application where a null meaning "not
  * applicable" renders exactly like one meaning "not recorded".
  */
-function decouplingSeriesFrom(items: TrendPoint[]): TrendSeries[] {
+function decouplingSeriesFrom(items: TrendPoint[], markLatest: boolean): TrendSeries[] {
   const population = items.filter((point) => typeof point.decoupling_smoothed_pct === 'number')
   return [
     {
       label: 'Decoupling, 90-day mean',
-      markLatest: true,
+      markLatest,
       points: pointsFrom(population, 'decoupling_smoothed_pct', true),
     },
   ]
+}
+
+/** A fitness point's x, on the run's own wall clock through the offset joined in from `/api/trends`. */
+function fitnessTime(point: FitnessPoint, offsets: ReadonlyMap<string, number | null>): number {
+  return localCalendarTime(point.start_time_utc, offsets.get(point.activity_id) ?? null)
 }
 
 /**
@@ -272,6 +326,9 @@ function decouplingSeriesFrom(items: TrendPoint[]): TrendSeries[] {
  * estimates rather than a third one, and a day carries no instant, so each
  * point sits at the start of its day on the same day-number axis.
  *
+ * Each line takes its own `markLatest`, because each has its own latest
+ * stored point: a run can carry one estimate and not the other.
+ *
  * Every line here holds its last value for the readout, so hovering one of
  * Garmin's days reads both 42-day means as of that instant rather than as
  * missing; only the raw per-run points read at their own runs alone.
@@ -279,20 +336,20 @@ function decouplingSeriesFrom(items: TrendPoint[]): TrendSeries[] {
 function fitnessSeries(
   items: FitnessPoint[],
   offsets: ReadonlyMap<string, number | null>,
-  device: readonly DeviceVo2maxPoint[],
+  device: TrendPointDatum[],
+  markLatest: { hr: boolean; vdot: boolean; device: boolean },
 ): TrendSeries[] {
-  const t = (point: FitnessPoint) =>
-    localCalendarTime(point.start_time_utc, offsets.get(point.activity_id) ?? null)
+  const t = (point: FitnessPoint) => fitnessTime(point, offsets)
   return [
     {
       label: 'Heart rate based, 42-day mean',
-      markLatest: true,
+      markLatest: markLatest.hr,
       holdsLastForReadout: true,
       points: items.map((p) => ({ t: t(p), v: p.hr_vo2max_smoothed })),
     },
     {
       label: 'Performance based (VDOT), 42-day mean',
-      markLatest: true,
+      markLatest: markLatest.vdot,
       holdsLastForReadout: true,
       points: items.map((p) => ({ t: t(p), v: p.vdot_smoothed })),
     },
@@ -301,21 +358,26 @@ function fitnessSeries(
       scatter: true,
       faint: true,
       paletteSlot: 1,
+      // The axis is fitted to the lines, not to these: they spread far wider
+      // than the 42-day means and left the lines a fraction of the plot.
+      // Points beyond the axis are not drawn, and the About copy says so.
+      // See `TrendSeries.ignoredByScale`.
+      ignoredByScale: true,
       points: items.map((p) => ({ t: t(p), v: p.hr_vo2max })),
     },
     // Garmin's own number, a reference beside the two estimates rather than
     // a third one; `docs/reference/math/vo2max.md`, "Against Garmin's own".
     // Slot 3 explicitly: by position it would default to slot 4.
-    ...(device.length > 0
+    ...(device.length > 0 && items.length > 0
       ? [
           {
             label: 'Garmin (watch)',
-            markLatest: true,
+            markLatest: markLatest.device,
             // The watch's VO2max on any day is its last update, so hovering a
             // run reads Garmin's value as of that day beside the estimates.
             holdsLastForReadout: true,
             paletteSlot: 3 as const,
-            points: device.map((d) => ({ t: calendarDayOfDate(d.calendar_date), v: d.vo2max })),
+            points: device,
           },
         ]
       : []),
@@ -550,9 +612,33 @@ const FITNESS_ABSENT_REASON =
  * take them out, before reading a trend off the chart.
  */
 export function Trends() {
+  const rawSearch = useSearch({ strict: false })
+  const navigate = useNavigate()
+  const search = validateTrendsSearch(rawSearch as Record<string, unknown>)
+  const period = search.period ?? DEFAULT_TRENDS_PERIOD
+  const allTime = period === 'all'
+  const [today] = useState(todayLocalDate)
+  const dateRange = useMemo(
+    () => periodRange(period, search.from, search.to, today),
+    [period, search.from, search.to, today],
+  )
+  const dayRange = useMemo(() => dayWindow(dateRange), [dateRange])
   const trendsQuery = useQuery(queries.trends())
   const fitnessQuery = useQuery(queries.fitness())
   const predictionsQuery = useQuery(queries.predictions())
+  // The period's own dates, the last one included: `/api/training-load`
+  // takes both bounds inclusive where the period's `to` is exclusive. The
+  // load is windowed by the request rather than here, since its weekly
+  // means are stored and the endpoint serves exactly the weeks inside. The
+  // view draws the daily and weekly series only, so it leaves the runs out.
+  const loadLastDay = dateRange.to === null ? undefined : inclusiveLastDay(dateRange.to)
+  const loadQuery = useQuery(
+    queries.trainingLoad({
+      ...(dateRange.from === null ? {} : { from: dateRange.from }),
+      ...(loadLastDay === undefined ? {} : { to: loadLastDay }),
+      runs: false,
+    }),
+  )
   // Every tag present is shown until the reader unticks it. The set is
   // kept as the *hidden* keys so a tag that appears later is shown by
   // default rather than needing to be known here in advance.
@@ -560,12 +646,13 @@ export function Trends() {
 
   // A link into one section, `/trends#decoupling` from the activity page,
   // lands on it only once every chart above it has data. The router tries
-  // the hash on navigation, while the three queries are still pending, and
+  // the hash on navigation, while the four queries are still pending, and
   // the charts that load afterwards push the section out of view. So the
-  // view scrolls once, after all three settle, and never again: a later
+  // view scrolls once, after all four settle, and never again: a later
   // refetch must not yank the reader back.
   const scrolledToHash = useRef(false)
-  const settled = !trendsQuery.isPending && !fitnessQuery.isPending && !predictionsQuery.isPending
+  const settled =
+    !trendsQuery.isPending && !fitnessQuery.isPending && !predictionsQuery.isPending && !loadQuery.isPending
   useEffect(() => {
     if (!settled || scrolledToHash.current) return
     scrolledToHash.current = true
@@ -578,7 +665,47 @@ export function Trends() {
   // empty array every render would rebuild every chart's options below.
   const allItems = useMemo(() => trendsQuery.data?.items ?? [], [trendsQuery.data])
   const effortKeys = useMemo(() => effortKeysPresent(allItems), [allItems])
-  const items = useMemo(() => allItems.filter((point) => !hidden.has(effortKey(point))), [allItems, hidden])
+  /*
+   * The runs inside the chosen period, which is all any chart draws.
+   *
+   * **Windowing is a viewport, not a filter on a mean's inputs**, so it is
+   * free of the trap the effort filter documents: each smoothed value inside
+   * the window is still the stored trailing mean over the whole history,
+   * runs before the window included, and the window is one contiguous span,
+   * so no stretch inside it is bridged by a chord. That is why it may scope
+   * every chart, VO2max and decoupling included, where the effort filter
+   * may scope only the scatter.
+   *
+   * The headline stats and the copy's findings still read the whole
+   * history: a stat is the latest stored value, and a finding is a fact
+   * about the history rather than about the reader's viewport.
+   */
+  const allDays = useMemo(
+    () => allItems.map((point) => localCalendarDay(point.start_time_utc, point.utc_offset_s)),
+    [allItems],
+  )
+  const windowItems = useMemo(
+    () => allItems.filter((_, i) => inWindow(allDays[i] ?? Number.NaN, dayRange)),
+    [allItems, allDays, dayRange],
+  )
+  const items = useMemo(
+    () => windowItems.filter((point) => !hidden.has(effortKey(point))),
+    [windowItems, hidden],
+  )
+  // Per chart, from the runs that chart's marked line has a value on: its
+  // latest stored point is the latest of those, not the latest run.
+  const markLatest = useMemo(() => {
+    const reaches = (field: keyof TrendPoint): boolean =>
+      reachesLatest(
+        allDays.filter((_, i) => typeof allItems[i]?.[field] === 'number'),
+        dayRange,
+      )
+    return {
+      hr: reaches('hr_at_median_smoothed_bpm'),
+      cadence: reaches('cadence_at_median_smoothed_spm'),
+      decoupling: reaches('decoupling_smoothed_pct'),
+    }
+  }, [allItems, allDays, dayRange])
 
   const references = trendsQuery.data?.references
   const paceLabels = useMemo<[string, string, string]>(
@@ -589,18 +716,19 @@ export function Trends() {
   const hrSeries = useMemo(
     () =>
       paceSeries(
-        allItems,
+        windowItems,
         items,
         paceLabels,
         ['hr_at_slow_smoothed_bpm', 'hr_at_median_smoothed_bpm', 'hr_at_fast_smoothed_bpm'],
         'hr_at_median_bpm',
+        markLatest.hr,
       ),
-    [allItems, items, paceLabels],
+    [windowItems, items, paceLabels, markLatest.hr],
   )
   const cadenceSeries = useMemo(
     () =>
       paceSeries(
-        allItems,
+        windowItems,
         items,
         paceLabels,
         [
@@ -609,8 +737,9 @@ export function Trends() {
           'cadence_at_fast_smoothed_spm',
         ],
         'cadence_at_median_spm',
+        markLatest.cadence,
       ),
-    [allItems, items, paceLabels],
+    [windowItems, items, paceLabels, markLatest.cadence],
   )
   // Built from the population alone rather than from every run with a null
   // between - see `decouplingSeriesFrom` for why that is not gap-filling -
@@ -620,7 +749,10 @@ export function Trends() {
   // not filter the mean, it recomputes it through fewer runs and redraws a
   // different line. Unticking a tag would silently change what the line
   // says rather than change which runs it shows.
-  const decouplingSeries = useMemo(() => decouplingSeriesFrom(allItems), [allItems])
+  const decouplingSeries = useMemo(
+    () => decouplingSeriesFrom(windowItems, markLatest.decoupling),
+    [windowItems, markLatest.decoupling],
+  )
   // Keyed on the *unfiltered* items: the VO2max chart is not effort-filtered
   // (its own series are already smoothed over a calendar window), so the
   // join must not lose an offset because its run is hidden from the trends.
@@ -628,10 +760,51 @@ export function Trends() {
     () => new Map(allItems.map((point) => [point.activity_id, point.utc_offset_s])),
     [allItems],
   )
-  const vo2maxSeries = useMemo(
-    () => fitnessSeries(fitnessQuery.data?.items ?? [], offsets, fitnessQuery.data?.device ?? []),
-    [fitnessQuery.data, offsets],
-  )
+  const vo2maxSeries = useMemo(() => {
+    const fitness = fitnessQuery.data?.items ?? []
+    const device = fitnessQuery.data?.device ?? []
+    const fitnessDays = fitness.map((point) => Math.floor(fitnessTime(point, offsets)))
+    const reaches = (field: 'hr_vo2max_smoothed' | 'vdot_smoothed'): boolean =>
+      reachesLatest(
+        fitnessDays.filter((_, i) => typeof fitness[i]?.[field] === 'number'),
+        dayRange,
+      )
+    const deviceAll = device.map((d) => ({ t: calendarDayOfDate(d.calendar_date), v: d.vo2max }))
+    const deviceInWindow = deviceAll.filter((point) => inWindow(point.t, dayRange))
+    // The watch's value on the window's first day is its last update before
+    // it, so the line runs from the window's start rather than from the
+    // first update inside it, and a run before that update reads the value
+    // the watch held. The rows arrive in date order.
+    const from = dayRange.from
+    const carried = from === null ? undefined : deviceAll.filter((point) => point.t < from).at(-1)
+    const carriedIn =
+      from !== null && carried !== undefined && deviceInWindow[0]?.t !== from ? [{ t: from, v: carried.v }] : []
+    return fitnessSeries(
+      fitness.filter((_, i) => inWindow(fitnessDays[i] ?? Number.NaN, dayRange)),
+      offsets,
+      [...carriedIn, ...deviceInWindow],
+      {
+        hr: reaches('hr_vo2max_smoothed'),
+        vdot: reaches('vdot_smoothed'),
+        device: reachesLatest(deviceAll.map((point) => point.t), dayRange),
+      },
+    )
+  }, [fitnessQuery.data, offsets, dayRange])
+
+  // The years the picker offers, from every run either payload dates.
+  const years = useMemo(() => {
+    const found = new Set(allDays.map((day) => dateOfCalendarDay(day).getUTCFullYear()))
+    for (const point of fitnessQuery.data?.items ?? []) {
+      found.add(dateOfCalendarDay(fitnessTime(point, offsets)).getUTCFullYear())
+    }
+    return [...found].sort((a, b) => a - b)
+  }, [allDays, fitnessQuery.data, offsets])
+
+  function updateSearch(change: TrendsSearch): void {
+    // `replace`, as `/distributions` does: a period is a view setting, and
+    // stepping through five of them should not take five presses of Back.
+    void navigate({ to: '.', search: applyTrendsSearchChange(search, change, today), hash: true, replace: true })
+  }
 
   // The figures the explanatory copy states, over the viewer's own history:
   // see `charts/trendsFindings.ts`. All of them read the unfiltered items,
@@ -641,7 +814,10 @@ export function Trends() {
     const fitness = fitnessQuery.data?.items ?? []
     const device = fitnessQuery.data?.device ?? []
     return {
-      heartRateStart: heartRateRecordStart(allItems),
+      // The one finding read over the period: it explains why the heart
+      // rate chart begins later than the cadence chart, which is a fact
+      // about the drawn window - outside it, the gap is not on the page.
+      heartRateStart: heartRateRecordStart(windowItems),
       stepAgainstGap: heartRateStepAgainstGap(allItems),
       againstVdot: heartRateEstimateAgainstVdot(fitness),
       againstDevice: estimatesAgainstDevice(fitness, offsets, device),
@@ -650,7 +826,7 @@ export function Trends() {
       slopeTrend: cadenceSlopeTrend(allItems),
       levelTrend: cadenceLevelTrend(allItems),
     }
-  }, [allItems, fitnessQuery.data, offsets])
+  }, [allItems, windowItems, fitnessQuery.data, offsets])
 
   function toggle(key: string) {
     setHidden((previous) => {
@@ -813,7 +989,7 @@ export function Trends() {
             series={hrSeries}
             yLabel="bpm"
             formatValue={heartRate}
-            emptyReason="No run has a heart rate fit yet."
+            emptyReason={allTime ? 'No run has a heart rate fit yet.' : 'No run in this period has a heart rate fit.'}
             ariaLabel="Heart rate at the reference paces"
           />
           <About>
@@ -857,7 +1033,7 @@ export function Trends() {
             series={cadenceSeries}
             yLabel="spm"
             formatValue={cadence}
-            emptyReason="No run has a cadence fit yet."
+            emptyReason={allTime ? 'No run has a cadence fit yet.' : 'No run in this period has a cadence fit.'}
             ariaLabel="Cadence at the reference paces"
           />
           <About>
@@ -922,7 +1098,7 @@ export function Trends() {
           yLabel="VO2max"
           formatValue={formatVo2max}
           formatTick={formatVo2max}
-          emptyReason={FITNESS_ABSENT_REASON}
+          emptyReason={allTime ? FITNESS_ABSENT_REASON : 'No run in this period has a VO2max estimate.'}
           ariaLabel="VO2max"
           // Two smoothed series that can sit far apart, with the raw points
           // beneath them, need the vertical room, or the three read as one
@@ -1117,7 +1293,8 @@ export function Trends() {
             Two estimates from different evidence: the heart rate method reads sustained intensity from
             ordinary running, VDOT reads it from the best efforts the extractor found. Each is a trailing
             42-day mean, with the raw per-run heart rate estimates drawn faintly beneath so the smoothing
-            never hides its inputs. This is one of the two charts the effort filter does not drive - the
+            never hides its inputs. The axis is fitted to the lines rather than to those points, so a run
+            whose estimate lies beyond it is left off the plot. This is one of the two charts the effort filter does not drive - the
             plotted series are already smoothed over a calendar window, so filtering their inputs would
             not be reflected in a smoothed value.
           </p>
@@ -1231,6 +1408,89 @@ export function Trends() {
       </Section>
   )
 
+  /*
+   * The training load: weekly heart-rate TRIMP, with fitness and fatigue as
+   * weekly means, from `GET /api/training-load` over the period. The three
+   * figures are the latest complete week's stored means inside the period,
+   * selected by `latestCompleteWeek` and never computed: the week in
+   * progress has means of the days so far.
+   */
+  const loadWeekShown =
+    loadQuery.data === undefined ? undefined : latestCompleteWeek(loadQuery.data.weeks, loadLastDay)
+  const loadBody = (() => {
+    if (loadQuery.isPending) return <p className={styles.status}>Loading the training load…</p>
+    if (loadQuery.isError) {
+      return (
+        <p className={styles.status} role="alert">
+          Could not load the training load: {describeApiError(loadQuery.error)}
+        </p>
+      )
+    }
+    if (!weighsAnyRun(loadQuery.data.weeks, loadQuery.data.days)) {
+      return (
+        <Absent
+          reason={
+            allTime
+              ? 'No run has a heart rate and a resting and maximum heart rate to weigh it by yet.'
+              : 'No run in this period has a heart rate and a resting and maximum heart rate to weigh it by.'
+          }
+        />
+      )
+    }
+    return (
+      <>
+        <StatGroup>
+          <Stat
+            label="Fitness (CTL)"
+            value={loadLabel(loadWeekShown?.ctl_mean)}
+            detail={
+              loadWeekShown === undefined
+                ? 'per day, no complete week'
+                : `per day, week of ${calendarDate(loadWeekShown.week_start)}`
+            }
+          />
+          {/* Per day, the model's own unit, while the lines below are times
+              seven: the details and the note both say so. */}
+          <Stat label="Fatigue (ATL)" value={loadLabel(loadWeekShown?.atl_mean)} detail="per day, that week's mean" />
+          <Stat label="Form" value={formLabel(loadWeekShown?.form_mean)} detail="per day, fitness less fatigue" />
+        </StatGroup>
+        <TrainingLoadChart
+          days={loadQuery.data.days}
+          weeks={loadQuery.data.weeks}
+          ariaLabel="Training load"
+          today={today}
+        />
+      </>
+    )
+  })()
+
+  const loadSection = (
+    <Section title="Training load" note="Heart-rate TRIMP per week, with fitness and fatigue as weekly means" divided>
+      {loadBody}
+      <About>
+        <p>
+          TRIMP weighs each minute of a run by where its heart rate sat between resting and maximum, more
+          steeply towards the top, and a bar is a week&apos;s total. Rest days count as zero. Fitness, kondition
+          in Swedish, is a 42-day weighted mean of the daily TRIMP, and fatigue, trötthet, a 7-day one. Both
+          are per day, so the lines show them times seven: fitness as the weekly load the athlete is used
+          to, fatigue as the weekly load of late. Form is fitness less fatigue, below zero when the recent
+          load is above what the athlete is used to.
+        </p>
+        <p>
+          Fatigue and form are drawn as weekly means because at three runs a week their daily values jump
+          on every run day and fall between them, a sawtooth that says more about the day of the week than
+          about the training; a week&apos;s mean removes it. The figures above are the per-day means of the
+          latest complete week in the period, the lines&apos; values over seven.
+        </p>
+        <p>
+          TRIMP measures the heart and distance the legs. The line on the right-hand axis is the running
+          distance over the 7 days ending each day, treadmill runs included, because a week can be light on
+          one and heavy on the other.
+        </p>
+      </About>
+    </Section>
+  )
+
   const perRunChartsBottom = trendsReady && (
         <>
           <Section id="decoupling" title="Aerobic decoupling" note="Heart rate drift against pace, within a run" divided>
@@ -1271,7 +1531,11 @@ export function Trends() {
               formatValue={formatDecoupling}
               formatTick={formatDecouplingTick}
               referenceLine={DURABILITY_REFERENCE_LINE}
-              emptyReason="No easy or steady run of 40 minutes or more has a decoupling average yet."
+              emptyReason={
+                allTime
+                  ? 'No easy or steady run of 40 minutes or more has a decoupling average yet.'
+                  : 'No easy or steady run of 40 minutes or more in this period has a decoupling average.'
+              }
               ariaLabel="Aerobic decoupling"
             />
             <About>
@@ -1367,7 +1631,9 @@ export function Trends() {
   // predictions sections carry their own state, so no section's position
   // is decided by which guard it happens to sit inside.
   //
-  // VO2max, race predictions and heart rate are the maintainer's stated order.
+  // VO2max, race predictions and heart rate are the maintainer's stated order,
+  // and the training load joined after the predictions on 2026-11-15, the
+  // other reading of the whole athlete rather than of a run at a pace.
   // Cadence follows heart rate because they are the same chart of the same
   // fit and read as a pair; decoupling follows as the other aerobic signal;
   // the slope closes as a stated non-finding rather than opening with one.
@@ -1393,10 +1659,22 @@ export function Trends() {
     <div className={styles.trends}>
       <header className={styles.head}>
         <h1>Trends</h1>
+        {/* Above every chart because it scopes every chart, the VO2max one
+            included; the race predictions table and the headline numbers
+            are the latest stored values whatever it says. */}
+        <PeriodPicker
+          label="Period"
+          period={period}
+          bounds={{ from: search.from, to: search.to }}
+          years={years}
+          onPeriod={(next) => updateSearch({ period: next })}
+          onBounds={(next) => updateSearch({ from: next.from, to: next.to })}
+        />
         {trendsNotice}
       </header>
       {vo2maxSection}
       {predictionsSection}
+      {loadSection}
       {trendsReady && perRunChartsTop}
       {perRunChartsBottom}
     </div>

@@ -1,0 +1,139 @@
+/*
+ * The trajectory chart. Sized as `PlanVolume.module.css` sizes its own: the
+ * column's width, and the height the measured viewBox gives it.
+ */
+.chart {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.panel {
+  width: 100%;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* Runna's grid: faint rules the marks stand in front of. */
+.rule {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.axisLabel {
+  fill: var(--ink-dim);
+  font-family: inherit;
+  font-size: var(--text-label);
+  /* Proportional: tabular figures space out the period and colon, `34 . 5`, `22 : 00`. */
+  font-variant-numeric: proportional-nums;
+}
+
+/* The goal, the one line on the panel the reader measures against: ink,
+   as every goal line of the plan's charts, since the accent red is the
+   intervals' own colour elsewhere on the page. */
+.target {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+/*
+ * A halo in the page's colour behind every label drawn inside the plot,
+ * so one that lands on a rule, the target or the trajectory still reads:
+ * a label near the plot's edge can only sit on a rule, whichever side of
+ * its point it takes.
+ */
+.targetLabel,
+.pointLabel,
+.checkpointLabel {
+  paint-order: stroke;
+  stroke: var(--plan-surface, var(--page));
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.targetLabel {
+  fill: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  /* A lone label, so proportional: Schibsted Grotesk's tabular figures swap
+     the colon and the period for figure-width glyphs, `25 : 00`. */
+  font-variant-numeric: proportional-nums;
+}
+
+/* The order the versions were written in, behind their points. */
+.joint {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.point {
+  fill: var(--ink);
+}
+
+.pointLabel {
+  fill: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-label);
+  font-variant-numeric: proportional-nums;
+}
+
+/* Hollow, so a checkpoint reads as a date marker rather than a value. */
+.checkpoint {
+  fill: var(--plan-surface, var(--page));
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+/* The checkpoint row under the dates: a rule parting it from the plot,
+   then its name, so a diamond is read as a date in its own row and never
+   as a time on the ladder above. */
+.stripRule {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.stripName {
+  fill: var(--ink-dim);
+  font-family: inherit;
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+}
+
+.checkpointLabel {
+  fill: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-label);
+  font-variant-numeric: proportional-nums;
+}
+
+.key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  margin-top: auto;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+}
+
+.key li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.swatch {
+  display: block;
+  flex: none;
+  overflow: visible;
+}

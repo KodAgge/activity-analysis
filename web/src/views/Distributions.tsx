@@ -3,20 +3,15 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { useId, useMemo, useState } from 'react'
 import {
   applySearchChange,
-  customBoundChange,
   groupsFor,
-  inclusiveLastDay,
-  periodLabel,
-  todayLocalDate,
   validateDistributionSearch,
   yearsIn,
   type Compare,
-  type CustomBounds,
   type Days,
   type DistributionSearch,
-  type Period,
 } from '../api/distributionSearch'
 import { describeApiError } from '../api/errors'
+import { todayLocalDate } from '../api/period'
 import { queries } from '../api/queries'
 import { VARIABLES, variableById, type DistributionRun, type VariableId } from '../charts/distributionVariables'
 import { Histogram, type HistogramSeries } from '../charts/Histogram'
@@ -33,6 +28,7 @@ import {
   type BarMeasure,
 } from '../charts/histogramMath'
 import { Absent } from '../components/Absent'
+import { PeriodPicker } from '../components/PeriodPicker'
 import { Row, RowList } from '../components/RowList'
 import { formatLocalShort } from '../format'
 import styles from './Distributions.module.css'
@@ -355,69 +351,6 @@ function asOverlay(series: readonly HistogramSeries[]): [HistogramSeries] | [His
   const [first, second] = series
   if (first === undefined) return null
   return second === undefined ? [first] : [first, second]
-}
-
-interface PeriodPickerProps {
-  label: string
-  period: Period
-  bounds: CustomBounds
-  /** Every year holding a run, ascending, as `yearsIn` returns them. */
-  years: readonly number[]
-  onPeriod: (period: Period) => void
-  onBounds: (bounds: CustomBounds) => void
-}
-
-/**
- * One picker for both `period` and `vs`: the presets,
- * one option per year holding a run, newest first, and a custom range.
- *
- * The URL's `to` is exclusive and the "To" input is not: it shows and
- * takes the last day the range includes, and `customBoundChange` stores the
- * day after it.
- */
-function PeriodPicker({ label, period, bounds, years, onPeriod, onBounds }: PeriodPickerProps) {
-  const presets: Period[] = ['all', 'last_12_months', 'previous_12_months']
-  const yearPeriods = [...years].reverse().map((year): Period => `year_${year}`)
-  // A URL naming a year no run is in still gets its option, or the select
-  // and the address bar would disagree about what is shown.
-  const options = [...presets, ...yearPeriods]
-  if (period !== 'custom' && !options.includes(period)) options.push(period)
-  options.push('custom')
-
-  return (
-    <div className={styles.picker} role="group" aria-label={label}>
-      <label className={styles.field}>
-        {label}
-        <select value={period} onChange={(event) => onPeriod(event.target.value as Period)}>
-          {options.map((option) => (
-            <option key={option} value={option}>
-              {option === 'custom' ? 'Custom range' : periodLabel(option, undefined, undefined)}
-            </option>
-          ))}
-        </select>
-      </label>
-      {period === 'custom' && (
-        <>
-          <label className={styles.field}>
-            From
-            <input
-              type="date"
-              value={bounds.from ?? ''}
-              onChange={(event) => onBounds(customBoundChange(bounds, 'from', event.target.value))}
-            />
-          </label>
-          <label className={styles.field}>
-            To
-            <input
-              type="date"
-              value={bounds.to === undefined ? '' : inclusiveLastDay(bounds.to)}
-              onChange={(event) => onBounds(customBoundChange(bounds, 'lastDay', event.target.value))}
-            />
-          </label>
-        </>
-      )}
-    </div>
-  )
 }
 
 interface SegmentedProps<T extends string> {

@@ -513,6 +513,7 @@ def test_the_instant_is_serialised_as_utc_whatever_the_server_timezone_is():
         calories=None,
         source="garmin_fit",
         pr_distance_keys=[],
+        effort_tags=[],
     )
     assert summary.start_time_utc.utcoffset() == timedelta(0)
     assert summary.model_dump(mode="json")["start_time_utc"] == "2026-08-28T18:19:14Z"
@@ -1108,3 +1109,53 @@ def test_an_ordinary_activity_has_no_reclassification(api_client: TestClient):
 
     assert item["recorded_sport"] == item["sport"] == "running"
     assert body["reclassification"] is None
+
+
+def test_the_list_carries_each_runs_tags_with_its_effort_first_and_no_pr(ingested_store: Paths):
+    """``effort_tags`` is the summary's form of the analysis layer's tags.
+
+    The training plan's lead-in colours each run by it, so it rides on the
+    list the page already fetches rather than one detail request per run.
+    One activity's tags are rewritten to a known set: the effort tag first,
+    then the flags by name, each once, and ``pr`` left to
+    ``pr_distance_keys``, which already carries it with its distances.
+    """
+    tags = read_activity_tags(ingested_store)
+    tagged = str(tags.iloc[0]["activity_id"])
+    template = tags.iloc[[0]].copy()
+    rows = []
+    for kind, tag, key in [
+        ("flag", "pr", "1k"),
+        ("flag", "long_run", None),
+        ("effort", "steady", None),
+        ("flag", "pr", "5k"),
+    ]:
+        row = template.copy()
+        row["kind"], row["tag"], row["distance_key"] = kind, tag, key
+        row["rep_count"], row["rep_pattern"] = None, None
+        rows.append(row)
+    rewritten = pd.concat([tags[tags["activity_id"] != tagged], *rows], ignore_index=True)
+    write_activity_tags(ingested_store, rewritten)
+
+    with TestClient(create_app(ingested_store)) as client:
+        items = client.get("/api/activities", params={"limit": 200}).json()["items"]
+        detail = client.get(f"/api/activities/{tagged}").json()
+
+    by_id = {item["activity_id"]: item for item in items}
+    assert by_id[tagged]["effort_tags"] == ["steady", "long_run"]
+    assert detail["summary"]["effort_tags"] == ["steady", "long_run"]
+    # Every other run still lists its own tags, and never ``pr``.
+    for item in items:
+        assert isinstance(item["effort_tags"], list)
+        assert "pr" not in item["effort_tags"]
+
+
+def test_a_run_with_no_tags_lists_none_rather_than_null(ingested_store: Paths):
+    tags = read_activity_tags(ingested_store)
+    untagged = str(tags.iloc[0]["activity_id"])
+    write_activity_tags(ingested_store, tags[tags["activity_id"] != untagged])
+
+    with TestClient(create_app(ingested_store)) as client:
+        items = client.get("/api/activities", params={"limit": 200}).json()["items"]
+
+    assert {item["activity_id"]: item for item in items}[untagged]["effort_tags"] == []

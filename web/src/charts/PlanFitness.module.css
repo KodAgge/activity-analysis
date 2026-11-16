@@ -1,0 +1,173 @@
+/*
+ * Fitness, fatigue and form. Laid out as `PlanOutlook.module.css`: the
+ * column's width, two panels and a date axis tall. The three series take
+ * the Trends view's slots, so fitness, fatigue and form keep one colour
+ * across the app.
+ */
+.chart {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.note {
+  margin: 0;
+  color: var(--ink-dim);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.panel {
+  width: 100%;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.rule {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+/* Form is judged against zero, so its rule is ink rather than a grid line. */
+.zero {
+  stroke: var(--ink-dim);
+  stroke-width: 1;
+}
+
+.axisLabel {
+  fill: var(--ink-dim);
+  font-family: inherit;
+  font-size: var(--text-label);
+  font-variant-numeric: proportional-nums;
+}
+
+.caption {
+  fill: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+}
+
+.fitness,
+.fatigue,
+.form,
+.neutral {
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.fitness {
+  stroke: var(--series-2);
+}
+
+.fatigue {
+  stroke: var(--series-3);
+}
+
+.form {
+  stroke: var(--series-5);
+}
+
+.neutral {
+  stroke: var(--ink-dim);
+}
+
+/* A series of one week: filled in its line's colour. */
+.dot.fitness {
+  fill: var(--series-2);
+}
+
+.dot.fatigue {
+  fill: var(--series-3);
+}
+
+.dot.form {
+  fill: var(--series-5);
+}
+
+/* The week the week PDF is about: a faint ink band behind the lines. */
+.week {
+  fill: var(--ink);
+  opacity: 0.07;
+}
+
+/* Where the week starts and is expected to end: filled, ringed in the surface so they stand off the lines. */
+.weekPoint {
+  stroke: var(--plan-surface, var(--page));
+  stroke-width: 1.5;
+}
+
+.weekPoint.fitness {
+  fill: var(--series-2);
+}
+
+.weekPoint.fatigue {
+  fill: var(--series-3);
+}
+
+.weekPoint.form {
+  fill: var(--series-5);
+}
+
+/* What the plan expects: dashed, as the VO2max outlook draws its expected line. */
+.expected {
+  stroke-dasharray: 4 3;
+}
+
+.measured {
+  stroke-dasharray: none;
+}
+
+/* The race, as the trajectory draws its target: ink, not the accent. */
+.race {
+  stroke: var(--ink);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+
+.raceLabel {
+  fill: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  paint-order: stroke;
+  stroke: var(--plan-surface, var(--page));
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  margin-top: auto;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+}
+
+.key li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.swatch {
+  display: block;
+  flex: none;
+  overflow: visible;
+}

@@ -1,0 +1,213 @@
+/*
+ * The assessment as Runna's verdict card (`pace-insights`): the verdict in
+ * a large bold word, the reading under it, and a row to open for the
+ * reasons. On a phone it stacks; from 60rem the feasibility takes a
+ * column of its own at the card's start and the verdict reads beside it,
+ * at a prose measure, with the disclosure under both.
+ */
+.assessment {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+  line-height: var(--leading-body);
+}
+
+@media (min-width: 60rem) {
+  .assessment {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: var(--space-10);
+  }
+
+  /* The verdict's half, set off from the feasibility's by a hairline and
+     its list centred on the word beside it. */
+  .assessment .verdict {
+    align-self: center;
+    padding-left: var(--space-10);
+    border-left: var(--hairline);
+  }
+
+  .headline .word {
+    font-size: var(--text-display);
+    letter-spacing: -0.01em;
+  }
+
+  .why {
+    grid-column: 1 / -1;
+  }
+}
+
+/* The label over the value, Runna's `Weeks Completed` over `5/12`: one
+   small uppercase eyebrow, then the word at the stat size. One element,
+   so the label and the word read as `Feasibility Possible`. */
+.headline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.word {
+  font-size: var(--text-stat-lg);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+}
+
+.feasibility {
+  display: flex;
+  flex-direction: column;
+}
+
+.scale {
+  margin-top: var(--space-3);
+}
+
+/* A name under each dash, in the dashes' own columns and gap; the
+   verdict's step in bold ink, the others dim, so the step reads without
+   the fill. */
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+  line-height: var(--leading-tight);
+}
+
+.steps > :nth-child(2) {
+  text-align: center;
+}
+
+.steps > :nth-child(3) {
+  text-align: right;
+}
+
+.stepOn {
+  color: var(--ink);
+  font-weight: var(--weight-bold);
+}
+
+/* Claude's verdict, one short list under its eyebrow, in the page's ink
+   at the body size. */
+.assessment .verdict {
+  gap: var(--space-2);
+}
+
+.dim {
+  color: var(--ink-dim);
+}
+
+.cited {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+}
+
+/* The disclosure as a row of its own under a hairline, its chevron at the
+   far end, as Runna ends a card on `see less`. */
+.why {
+  border-top: var(--hairline);
+}
+
+.summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 2.75rem;
+  margin-bottom: calc(var(--space-2) * -1);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+  list-style: none;
+  cursor: pointer;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.summary::after {
+  content: '';
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: var(--space-1);
+  border-right: 2px solid var(--ink-dim);
+  border-bottom: 2px solid var(--ink-dim);
+  transform: translateY(-25%) rotate(45deg);
+}
+
+.why[open] > .summary::after {
+  transform: translateY(25%) rotate(-135deg);
+}
+
+.summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* What opens: the rest of the summary and the reasoning, each block kept
+   whole, in two columns on a desktop. Blocks rather than PlanProse's flex
+   column, so the columns can share them out. */
+.body {
+  padding-top: var(--space-4);
+}
+
+.body > * + * {
+  margin-top: var(--space-4);
+}
+
+.body .prose {
+  display: block;
+}
+
+.prose > div {
+  break-inside: avoid;
+}
+
+.prose > div + div {
+  margin-top: var(--space-4);
+}
+
+@media (min-width: 60rem) {
+  .body {
+    column-gap: var(--space-10);
+    columns: 2;
+  }
+}
+
+/*
+ * The long PDF carries the reasoning although the disclosure is closed on
+ * screen; the short one prints the disclosure as the screen has it.
+ * Chromium hides a closed `<details>`'s body through its
+ * `::details-content` slot, so styling the children cannot show them: the
+ * slot itself is made visible. The summary's chevron goes, as there is
+ * nothing to open on paper.
+ */
+@media print {
+  :global(:root[data-plan-print='full']) .why::details-content {
+    content-visibility: visible;
+    display: block;
+  }
+
+  :global(:root[data-plan-print='full']) .summary::after {
+    display: none;
+  }
+}
+
+/* On paper the verdict reads whole: the feasibility scale and the verdict
+   block never part, from each other or within, and the reasoning's name
+   stays with its text. */
+@media print {
+  .feasibility,
+  .verdict {
+    break-inside: avoid;
+  }
+
+  .feasibility {
+    break-after: avoid;
+  }
+
+  .summary {
+    break-after: avoid;
+  }
+}

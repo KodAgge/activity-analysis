@@ -128,9 +128,11 @@ a.inner:focus-visible {
  * about the reference and is not up for revision; only the figure set
  * changes.
  *
- * The colon is *not* in the `tnum` mapping and keeps its 623 advance, which
- * is correct: it is punctuation, and two times with the same digit count
- * have the same number of colons.
+ * The colon is in the `tnum` mapping too, widened from its 623 advance to
+ * the figures' 1300, like the period and comma, so a time here reads with
+ * looser colons than in running text. In this right-aligned column that is
+ * the price of minutes that sit over minutes; a lone value elsewhere takes
+ * `proportional-nums` instead (`docs/reference/frontend.md`, beside `Stat`).
  */
 .value {
   grid-area: value;

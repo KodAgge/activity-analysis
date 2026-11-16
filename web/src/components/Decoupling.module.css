@@ -23,7 +23,7 @@
 .value {
   font-size: var(--text-stat-lg);
   font-weight: var(--weight-bold);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: proportional-nums;
 }
 
 .reading {

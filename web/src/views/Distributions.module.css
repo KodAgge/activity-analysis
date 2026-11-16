@@ -58,14 +58,6 @@
   font-weight: var(--weight-regular);
 }
 
-/* A period and, when custom, its two dates, kept together on one row. */
-.picker {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--space-2);
-}
-
 /*
  * A segmented control: joined radio segments. `min-inline-size: 0`
  * because a fieldset's default is `min-content`, which would refuse to

@@ -165,6 +165,7 @@ SUMMARY_SELECT = (
     # NULL, and "this run set no records" is an empty list rather than an
     # unknown. A null here would make the client guess.
     + ", coalesce(pr.pr_distance_keys, []) AS pr_distance_keys"
+    + ", coalesce(et.effort_tags, []) AS effort_tags"
 )
 
 #: Which distances each activity holds a personal record at, ordered by the
@@ -198,6 +199,23 @@ PR_DISTANCE_KEYS_FROM = """(
     GROUP BY 1
 )"""
 
+#: Each activity's tag names from ``activity_tags``, each once, the effort
+#: classification first and the flags after it by name, as ``recent_runs``
+#: orders them: ``['steady', 'long_run']``. ``pr`` is left out because
+#: ``pr_distance_keys`` already carries it with its distances. Read from the
+#: classifier's own table and never re-derived, for the reason
+#: ``PR_DISTANCE_KEYS_FROM`` gives; the training plan's lead-in colours each
+#: run by it from the list it already fetches, rather than one detail
+#: request per run.
+EFFORT_TAGS_FROM = """(
+    SELECT activity_id,
+           list(tag ORDER BY effort DESC, tag) AS effort_tags
+    FROM (SELECT DISTINCT activity_id, tag, kind = 'effort' AS effort
+          FROM activity_tags
+          WHERE tag <> 'pr')
+    GROUP BY 1
+)"""
+
 #: LEFT, not INNER: a running activity ingested but not yet recomputed - or
 #: any non-running activity, which the derived layer never covers at all -
 #: still has to appear in the list, with ``moving_time_s`` null rather than
@@ -205,7 +223,8 @@ PR_DISTANCE_KEYS_FROM = """(
 SUMMARY_FROM = (
     "activities a "
     "LEFT JOIN activity_metrics m ON m.activity_id = a.activity_id "
-    f"LEFT JOIN {PR_DISTANCE_KEYS_FROM} pr ON pr.activity_id = a.activity_id"
+    f"LEFT JOIN {PR_DISTANCE_KEYS_FROM} pr ON pr.activity_id = a.activity_id "
+    f"LEFT JOIN {EFFORT_TAGS_FROM} et ON et.activity_id = a.activity_id"
 )
 
 #: Only these six, because they are the only orderings the list's columns ask for.
@@ -456,6 +475,10 @@ def records(cur: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
     ``effort_count`` counts the eligible efforts only, so it answers "out of
     how many comparable attempts" rather than "how many times the extractor
     found this distance".
+
+    ``local_date`` rides along for the training plan's context, which files
+    each record under its day; ``Record`` ignores it, so the endpoint does not
+    serve it.
     """
     rows: list[dict[str, Any]] = (
         cur.execute(
@@ -488,7 +511,8 @@ def records(cur: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
                    r.activity_id,
                    a.start_time_utc,
                    a.utc_offset_s,
-                   a.name
+                   a.name,
+                   {LOCAL_DATE_SQL} AS local_date
             FROM ranked r
             JOIN activities a ON a.activity_id = r.activity_id
             WHERE r.rn = 1
@@ -694,6 +718,21 @@ def run_local_dates(cur: duckdb.DuckDBPyConnection, *, through: date) -> list[da
     return dates
 
 
+def resting_hr_measured_through(cur: duckdb.DuckDBPyConnection, *, through: date) -> date | None:
+    """The newest day with a measured resting heart rate, on or before ``through``.
+
+    Only a full Garmin export carries the resting series, so this is where it
+    ends, and every run more than 28 days past it rests on an older rest or
+    on the device setting.
+    """
+    row = cur.execute(
+        "SELECT max(calendar_date) FROM resting_hr "
+        "WHERE resting_hr_bpm IS NOT NULL AND calendar_date <= ?",
+        [through],
+    ).fetchone()
+    return None if row is None else row[0]
+
+
 def last_activity_local_date(cur: duckdb.DuckDBPyConnection, *, through: date) -> date | None:
     """The local date of the latest activity of any sport, inside the window.
 
@@ -816,6 +855,14 @@ def current_zone_boundaries(cur: duckdb.DuckDBPyConnection) -> list[float]:
     if not rows or rows[0]["hr_zone_boundaries"] is None:
         return []
     return [float(value) for value in rows[0]["hr_zone_boundaries"]]
+
+
+def current_max_hr_bpm(cur: duckdb.DuckDBPyConnection) -> float | None:
+    """The maximum heart rate from the profile ``current_zone_boundaries`` reads."""
+    row = cur.execute(
+        "SELECT max_hr_bpm FROM athlete_profile ORDER BY effective_from DESC LIMIT 1"
+    ).fetchone()
+    return None if row is None or row[0] is None else float(row[0])
 
 
 def fitness(cur: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
@@ -946,7 +993,7 @@ def progression(cur: duckdb.DuckDBPyConnection, distance_key: str) -> list[dict[
 
 
 def trends(
-    cur: duckdb.DuckDBPyConnection,
+    cur: duckdb.DuckDBPyConnection, *, since: date | None = None, through: date | None = None
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     """The shared fit and one efficiency point per fitted activity, oldest first.
 
@@ -960,6 +1007,10 @@ def trends(
     is taken should a store ever hold more than one, and ``None`` is returned
     on a store where the pass has not run, which the router serves as null
     references rather than as an error.
+
+    ``since`` and ``through`` keep the points whose local date lies between
+    them, inclusive, for the training plan's context; the endpoint serves
+    every point.
     """
     fit_rows: list[dict[str, Any]] = (
         cur.execute(
@@ -983,7 +1034,10 @@ def trends(
             "e.decoupling_pct, e.is_aerobic_long_run, e.decoupling_smoothed_pct, "
             "e.fit_seconds "
             "FROM activity_efficiency e JOIN activities a ON a.activity_id = e.activity_id "
-            "ORDER BY a.start_time_utc, e.activity_id"
+            f"WHERE (?::DATE IS NULL OR {LOCAL_DATE_SQL} >= ?::DATE) "
+            f"AND (?::DATE IS NULL OR {LOCAL_DATE_SQL} <= ?::DATE) "
+            "ORDER BY a.start_time_utc, e.activity_id",
+            [since, since, through, through],
         )
         .to_arrow_table()
         .to_pylist()
@@ -1109,6 +1163,407 @@ def latest_hr_vo2max_smoothed(cur: duckdb.DuckDBPyConnection, *, window_days: in
         [window_days],
     ).fetchone()
     return None if row is None else float(row[0])
+
+
+def effort_source(
+    cur: duckdb.DuckDBPyConnection, *, distance_key: str, elapsed_time_s: float
+) -> dict[str, Any] | None:
+    """The run an eligible effort of this time at this distance came from, or None.
+
+    ``recent_eligible_efforts`` aggregates to one time per distance and so
+    drops the activity; this finds it again, so the training plan's context
+    can say which run a best-effort prediction was converted from. The time
+    is the stored value read back unchanged, so the match is exact. Should
+    two runs hold the same time, the later one is taken, which is the one
+    inside the prediction window whenever only one of them is.
+    """
+    rows: list[dict[str, Any]] = (
+        cur.execute(
+            f"""
+            SELECT be.activity_id, a.start_time_utc, a.utc_offset_s,
+                   {LOCAL_DATE_SQL} AS local_date
+            FROM best_efforts be
+            JOIN activities a ON a.activity_id = be.activity_id
+            JOIN activity_metrics m ON m.activity_id = be.activity_id
+            WHERE {_EFFORT_ELIGIBLE_SQL}
+              AND be.distance_key = ?
+              AND be.elapsed_time_s = ?
+            ORDER BY a.start_time_utc DESC, be.activity_id
+            LIMIT 1
+            """,
+            [distance_key, elapsed_time_s],
+        )
+        .to_arrow_table()
+        .to_pylist()
+    )
+    return rows[0] if rows else None
+
+
+def fitness_on(cur: duckdb.DuckDBPyConnection, *, on: date) -> dict[str, Any]:
+    """The fitness estimates in force on a local date, each None when none is.
+
+    ``hr_vo2max_smoothed`` and ``vdot`` are the latest ``fitness_series``
+    row's on or before ``on``, read as stored: the smoothed estimate is the
+    number the app reports, and ``vdot`` is that run's own, null when the run
+    held no eligible effort. ``garmin_vo2max`` is Garmin's value on the latest
+    day on or before ``on``, unrounded (``maxMet`` x 3.5), since the plan's
+    VO2max outlook works to a decimal; the watch shows it rounded.
+
+    ``fitness_series`` carries the instant but not the offset, so the offset
+    is joined from ``activities`` inside a subquery, where ``LOCAL_DATE_SQL``
+    can name both columns unqualified.
+    """
+    estimate = cur.execute(
+        f"""
+        SELECT hr_vo2max_smoothed, vdot
+        FROM (
+            SELECT f.activity_id, f.start_time_utc, a.utc_offset_s,
+                   f.hr_vo2max_smoothed, f.vdot
+            FROM fitness_series f JOIN activities a ON a.activity_id = f.activity_id
+        )
+        WHERE {LOCAL_DATE_SQL} <= ?
+        ORDER BY start_time_utc DESC, activity_id DESC
+        LIMIT 1
+        """,
+        [on],
+    ).fetchone()
+    device = cur.execute(
+        "SELECT vo2max FROM device_vo2max WHERE calendar_date <= ? "
+        "ORDER BY calendar_date DESC, updated_at DESC LIMIT 1",
+        [on],
+    ).fetchone()
+    return {
+        "hr_vo2max_smoothed": None if estimate is None else estimate[0],
+        "vdot": None if estimate is None else estimate[1],
+        "garmin_vo2max": None if device is None else device[0],
+    }
+
+
+def threshold_now(cur: duckdb.DuckDBPyConnection) -> dict[str, Any] | None:
+    """The threshold heart rate in force at the newest run, with its readings.
+
+    Read as ``fitness_on`` reads the newest row: the latest ``run_load`` row,
+    stored as written. None when the store has no run or the newest run has
+    no estimate yet, which is every run until three readings exist. The
+    readings are the ``reading_ids`` that estimate was taken from, oldest first.
+    """
+    row = cur.execute(
+        "SELECT lthr_bpm, reading_ids FROM run_load "
+        "ORDER BY start_time_utc DESC, activity_id DESC LIMIT 1"
+    ).fetchone()
+    if row is None or row[0] is None:
+        return None
+    readings: list[dict[str, Any]] = (
+        cur.execute(
+            f"""
+            SELECT activity_id, {LOCAL_DATE_SQL} AS local_date, distance_key,
+                   elapsed_time_s, final_hr_bpm, vdot
+            FROM (
+                SELECT r.activity_id, r.start_time_utc, a.utc_offset_s,
+                       r.distance_key, r.elapsed_time_s, r.final_hr_bpm, r.vdot
+                FROM threshold_readings r
+                JOIN activities a ON a.activity_id = r.activity_id
+                WHERE list_contains(?::VARCHAR[], r.activity_id)
+            )
+            ORDER BY start_time_utc, activity_id
+            """,
+            [list(row[1] or [])],
+        )
+        .to_arrow_table()
+        .to_pylist()
+    )
+    return {"lthr_bpm": row[0], "readings": readings}
+
+
+def load_days(
+    cur: duckdb.DuckDBPyConnection, *, since: date | None, through: date | None
+) -> list[dict[str, Any]]:
+    """The daily TRIMP series within inclusive local dates, oldest first.
+
+    ``training_load.local_date`` is already a local calendar day, so it is
+    compared directly.
+    """
+    rows: list[dict[str, Any]] = (
+        cur.execute(
+            "SELECT local_date, trimp, ctl, atl, form, distance_m, distance_7d_m "
+            "FROM training_load "
+            "WHERE (?::DATE IS NULL OR local_date >= ?::DATE) "
+            "AND (?::DATE IS NULL OR local_date <= ?::DATE) "
+            "ORDER BY local_date",
+            [since, since, through, through],
+        )
+        .to_arrow_table()
+        .to_pylist()
+    )
+    return rows
+
+
+def load_weeks(
+    cur: duckdb.DuckDBPyConnection, *, since: date | None, through: date | None
+) -> list[dict[str, Any]]:
+    """The weekly TRIMP series whose Monday is within inclusive dates, oldest first."""
+    rows: list[dict[str, Any]] = (
+        cur.execute(
+            "SELECT week_start, days, trimp, ctl_mean, atl_mean, form_mean, distance_m "
+            "FROM training_load_weekly "
+            "WHERE (?::DATE IS NULL OR week_start >= ?::DATE) "
+            "AND (?::DATE IS NULL OR week_start <= ?::DATE) "
+            "ORDER BY week_start",
+            [since, since, through, through],
+        )
+        .to_arrow_table()
+        .to_pylist()
+    )
+    return rows
+
+
+def trimp_per_minute_by_zone(
+    cur: duckdb.DuckDBPyConnection, *, since: date, through: date
+) -> list[float | None]:
+    """TRIMP per minute in each estimated zone over runs within inclusive local dates.
+
+    Five values, zone 1 first: each zone's summed stored ``trimp`` over the
+    summed minutes of the rows that carry one, None for a zone with no such
+    minutes. A run whose rest is at or above its max has zone seconds but no
+    TRIMP, and counting its minutes would dilute the rate. A sum over stored
+    rows.
+    """
+    rows = cur.execute(
+        f"""
+        SELECT zone_index, sum(trimp) AS trimp,
+               sum(seconds_s) FILTER (WHERE trimp IS NOT NULL) / 60.0 AS minutes
+        FROM (
+            SELECT z.zone_index, z.trimp, z.seconds_s,
+                   {LOCAL_DATE_SQL} AS local_date
+            FROM zone_time_estimated z
+            JOIN activities a ON a.activity_id = z.activity_id
+        )
+        WHERE local_date >= ?::DATE AND local_date <= ?::DATE
+        GROUP BY zone_index
+        """,
+        [since, through],
+    ).fetchall()
+    out: list[float | None] = [None] * 5
+    for zone_index, trimp, minutes in rows:
+        if 0 <= zone_index < 5 and minutes and trimp is not None:
+            out[zone_index] = trimp / minutes
+    return out
+
+
+def run_loads(
+    cur: duckdb.DuckDBPyConnection, *, since: date | None, through: date | None
+) -> list[dict[str, Any]]:
+    """Every run's threshold, TRIMP, estimated zone seconds and heart rate histogram.
+
+    ``zone_seconds`` is five values in zone order, empty for a run with no
+    heart rate. The histogram is two parallel lists, whole bpm and seconds,
+    ascending in bpm. Both are aggregated in subqueries before the join so
+    neither multiplies the other's rows.
+    """
+    rows: list[dict[str, Any]] = (
+        cur.execute(
+            f"""
+            SELECT activity_id, local_date, lthr_bpm, trimp,
+                   rest_bpm, max_bpm, rest_from_setting, max_from_setting,
+                   coalesce(zone_seconds, []::DOUBLE[]) AS zone_seconds,
+                   coalesce(hr_bpm, []::INTEGER[]) AS hr_bpm,
+                   coalesce(hr_seconds, []::DOUBLE[]) AS hr_seconds
+            FROM (
+                SELECT activity_id, start_time_utc, {LOCAL_DATE_SQL} AS local_date,
+                       lthr_bpm, trimp, rest_bpm, max_bpm,
+                       rest_from_setting, max_from_setting,
+                       zone_seconds, hr_bpm, hr_seconds
+                FROM (
+                    SELECT l.activity_id, l.start_time_utc, a.utc_offset_s,
+                           l.lthr_bpm, l.trimp, l.rest_bpm, l.max_bpm,
+                           l.rest_from_setting, l.max_from_setting,
+                           z.zone_seconds, h.hr_bpm, h.hr_seconds
+                    FROM run_load l
+                    JOIN activities a ON a.activity_id = l.activity_id
+                    LEFT JOIN (
+                        SELECT activity_id,
+                               list(seconds_s ORDER BY zone_index) AS zone_seconds
+                        FROM zone_time_estimated GROUP BY activity_id
+                    ) z ON z.activity_id = l.activity_id
+                    LEFT JOIN (
+                        SELECT activity_id,
+                               list(hr_bpm::INTEGER ORDER BY hr_bpm) AS hr_bpm,
+                               list(seconds_s ORDER BY hr_bpm) AS hr_seconds
+                        FROM hr_histogram GROUP BY activity_id
+                    ) h ON h.activity_id = l.activity_id
+                )
+            )
+            WHERE (?::DATE IS NULL OR local_date >= ?::DATE)
+              AND (?::DATE IS NULL OR local_date <= ?::DATE)
+            ORDER BY start_time_utc, activity_id
+            """,
+            [since, since, through, through],
+        )
+        .to_arrow_table()
+        .to_pylist()
+    )
+    return rows
+
+
+def weekly_load(
+    cur: duckdb.DuckDBPyConnection, *, since: date, through: date
+) -> list[dict[str, Any]]:
+    """TRIMP and minutes in each estimated zone per local ISO week, oldest first.
+
+    One row for every week that overlaps ``since`` through ``through``, keyed
+    by the Monday that starts it. A week with no runs is a rest week, zero
+    TRIMP and five zero minutes. A week with runs but none carrying a TRIMP,
+    because none recorded heart rate, is unknown rather than zero: ``trimp``
+    is None. So is ``zone_minutes`` for a week with runs but none with
+    estimated zones, because none recorded heart rate or all came before the
+    first threshold estimate, as the plan view's ``weeklyZoneMix`` has it. A
+    week is whole: it sums every day in it that the store holds, not only the
+    days inside the range. ``trimp`` sums the daily series and
+    ``zone_minutes`` the estimated zone seconds of the runs dated in the week,
+    five values, zone 1 first.
+    """
+    rows: list[dict[str, Any]] = (
+        cur.execute(
+            f"""
+            WITH weeks AS (
+                SELECT unnest(generate_series(
+                    date_trunc('week', ?::DATE), date_trunc('week', ?::DATE),
+                    INTERVAL 7 DAY))::DATE AS period_start
+            ),
+            loads AS (
+                SELECT date_trunc('week', local_date)::DATE AS period_start,
+                       sum(trimp) AS trimp
+                FROM training_load GROUP BY 1
+            ),
+            runs AS (
+                SELECT date_trunc('week', {LOCAL_DATE_SQL})::DATE AS period_start,
+                       count(*) AS n_runs, count(trimp) AS n_loaded
+                FROM (
+                    SELECT l.start_time_utc, a.utc_offset_s, l.trimp
+                    FROM run_load l
+                    JOIN activities a ON a.activity_id = l.activity_id
+                )
+                GROUP BY 1
+            ),
+            zoned_runs AS (
+                SELECT activity_id, zone_index, seconds_s,
+                       date_trunc('week', {LOCAL_DATE_SQL})::DATE AS period_start
+                FROM (
+                    SELECT z.activity_id, z.zone_index, z.seconds_s,
+                           a.start_time_utc, a.utc_offset_s
+                    FROM zone_time_estimated z
+                    JOIN activities a ON a.activity_id = z.activity_id
+                )
+            ),
+            zoned AS (
+                SELECT period_start, count(DISTINCT activity_id) AS n_zoned
+                FROM zoned_runs GROUP BY 1
+            ),
+            zones AS (
+                SELECT period_start, zone_index, sum(seconds_s) / 60.0 AS minutes
+                FROM zoned_runs
+                GROUP BY 1, 2
+            )
+            SELECT w.period_start,
+                   CASE WHEN r.n_loaded = 0 THEN NULL
+                        ELSE coalesce(l.trimp, 0.0) END AS trimp,
+                   CASE WHEN r.n_runs > 0 AND coalesce(zd.n_zoned, 0) = 0 THEN NULL ELSE
+                   [coalesce(sum(z.minutes) FILTER (WHERE z.zone_index = 0), 0.0),
+                    coalesce(sum(z.minutes) FILTER (WHERE z.zone_index = 1), 0.0),
+                    coalesce(sum(z.minutes) FILTER (WHERE z.zone_index = 2), 0.0),
+                    coalesce(sum(z.minutes) FILTER (WHERE z.zone_index = 3), 0.0),
+                    coalesce(sum(z.minutes) FILTER (WHERE z.zone_index = 4), 0.0)
+                   ] END AS zone_minutes
+            FROM weeks w
+            LEFT JOIN loads l USING (period_start)
+            LEFT JOIN runs r USING (period_start)
+            LEFT JOIN zoned zd USING (period_start)
+            LEFT JOIN zones z USING (period_start)
+            GROUP BY w.period_start, l.trimp, r.n_loaded, r.n_runs, zd.n_zoned
+            ORDER BY w.period_start
+            """,
+            [since, through],
+        )
+        .to_arrow_table()
+        .to_pylist()
+    )
+    return rows
+
+
+def recent_runs(
+    cur: duckdb.DuckDBPyConnection, *, since: date, through: date
+) -> list[dict[str, Any]]:
+    """Every run from one local date through another, oldest first, as a plan judges it.
+
+    Distance is the canonical session total and moving time and speed the
+    derived layer's, the columns the activity browser shows, so a run reads
+    the same in the training plan's context as in the app. The joins are
+    LEFT for the reason ``volume_by_period``'s is: a run not yet recomputed
+    still happened.
+
+    ``tags`` is each tag name once, the effort classification first; a run
+    that set records at several distances carries ``pr`` once, and
+    ``records`` names the distances. ``zone_time_s`` is seconds per zone in
+    zone order, empty for a run with no heart rate. ``trimp`` is the run's
+    training load, null for a run with no heart rate, and
+    ``estimated_zone_s`` its seconds in the five estimated zones, empty for a
+    run with no heart rate or no threshold estimate yet. ``rest_from_setting``
+    is true when the run's TRIMP was weighed against the device's resting
+    heart rate setting because no measured rest was 90 days or less old,
+    null for a run not yet recomputed.
+    """
+    rows: list[dict[str, Any]] = (
+        cur.execute(
+            f"""
+            WITH tags AS (
+                SELECT activity_id,
+                       list(tag ORDER BY effort DESC, tag) AS tags
+                FROM (SELECT DISTINCT activity_id, tag, kind = 'effort' AS effort
+                      FROM activity_tags)
+                GROUP BY 1
+            ),
+            zones AS (
+                SELECT activity_id, list(seconds_s ORDER BY zone_index) AS zone_time_s
+                FROM zone_time
+                GROUP BY 1
+            ),
+            estimated AS (
+                SELECT activity_id, list(seconds_s ORDER BY zone_index) AS estimated_zone_s
+                FROM zone_time_estimated
+                GROUP BY 1
+            ),
+            loads AS (
+                SELECT activity_id, trimp, rest_from_setting FROM run_load
+            )
+            SELECT a.activity_id,
+                   {LOCAL_DATE_SQL} AS local_date,
+                   a.distance_m,
+                   m.moving_time_s,
+                   coalesce(m.avg_speed_mps, a.avg_speed_mps) AS avg_speed_mps,
+                   a.avg_hr_bpm,
+                   m.is_indoor AS indoor,
+                   coalesce(t.tags, []) AS tags,
+                   coalesce(z.zone_time_s, []) AS zone_time_s,
+                   e.decoupling_pct,
+                   l.trimp,
+                   l.rest_from_setting,
+                   coalesce(est.estimated_zone_s, []) AS estimated_zone_s
+            FROM activities a
+            LEFT JOIN activity_metrics m ON m.activity_id = a.activity_id
+            LEFT JOIN activity_efficiency e ON e.activity_id = a.activity_id
+            LEFT JOIN tags t ON t.activity_id = a.activity_id
+            LEFT JOIN zones z ON z.activity_id = a.activity_id
+            LEFT JOIN loads l ON l.activity_id = a.activity_id
+            LEFT JOIN estimated est ON est.activity_id = a.activity_id
+            WHERE a.{RUNNING} AND {LOCAL_DATE_SQL} BETWEEN ? AND ?
+            ORDER BY a.start_time_utc, a.activity_id
+            """,
+            [since, through],
+        )
+        .to_arrow_table()
+        .to_pylist()
+    )
+    return rows
 
 
 #: A route's summary columns plus its current record, read from the

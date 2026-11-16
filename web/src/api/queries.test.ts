@@ -70,6 +70,49 @@ describe('queries.activities', () => {
   })
 })
 
+describe('queries.everyActivity', () => {
+  it('keys apart from a single page, without paging parameters', () => {
+    const opts = queries.everyActivity(asLeakedSearch({ sport: 'running', from: '2026-11-16', limit: 5, offset: 10 }))
+    expect(opts.queryKey).toEqual(['/api/activities', 'every', { sport: 'running', from: '2026-11-16' }])
+  })
+
+  it('pages through every match rather than stopping at the endpoint\'s 200', async () => {
+    const page = (n: number, total: number) => ({
+      data: {
+        total,
+        limit: 200,
+        offset: 0,
+        items: Array.from({ length: n }, (_, i) => ({ activity_id: String(i) })),
+      },
+      error: undefined,
+      response: new Response(),
+    })
+    vi.mocked(api.GET)
+      .mockReset()
+      .mockResolvedValueOnce(page(200, 250) as Awaited<ReturnType<typeof api.GET>>)
+      .mockResolvedValueOnce(page(50, 250) as Awaited<ReturnType<typeof api.GET>>)
+
+    const runs = await invokeQueryFn(queries.everyActivity({ sport: 'running', from: '2026-11-16', to: '2026-12-21' }))
+
+    expect(runs).toHaveLength(250)
+    expect(vi.mocked(api.GET).mock.calls.map((c) => (c[1] as { params: { query: unknown } }).params.query)).toEqual([
+      { sport: 'running', from: '2026-11-16', to: '2026-12-21', limit: 200, offset: 0 },
+      { sport: 'running', from: '2026-11-16', to: '2026-12-21', limit: 200, offset: 200 },
+    ])
+  })
+
+  it('throws when a page fails, rather than resolving to the runs so far', async () => {
+    vi.mocked(api.GET)
+      .mockReset()
+      .mockResolvedValueOnce({
+        data: undefined,
+        error: { detail: 'boom' },
+        response: new Response(null, { status: 503 }),
+      } as Awaited<ReturnType<typeof api.GET>>)
+    await expect(invokeQueryFn(queries.everyActivity({ sport: 'running' }))).rejects.toBeTruthy()
+  })
+})
+
 describe('queries.streams (M9)', () => {
   async function caughtBy(options: { queryFn?: unknown }): Promise<unknown> {
     try {

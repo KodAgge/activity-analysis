@@ -23,6 +23,7 @@ from activity_analysis.identity import displaces, find_matching_activity
 from activity_analysis.ingest.discover import discover, find_unsupported, sha256_file
 from activity_analysis.ingest.fit_reader import read_fit
 from activity_analysis.ingest.garmin_metrics import find_max_met_files, read_max_met
+from activity_analysis.ingest.garmin_wellness import find_uds_files, parse_uds_file
 from activity_analysis.ingest.gpx_reader import read_gpx
 from activity_analysis.ingest.ledger import append_ledger, processed_hashes
 from activity_analysis.ingest.normalize import normalize
@@ -40,6 +41,7 @@ from activity_analysis.store.writer import (
     upsert_device_vo2max,
     upsert_laps,
     upsert_profile_observations,
+    upsert_resting_hr,
     write_streams,
 )
 
@@ -55,6 +57,7 @@ class IngestResult:
     skipped_not_an_activity: int = 0
     replaced: int = 0
     vo2max_files: int = 0
+    resting_hr_files: int = 0
     errors: list[tuple[str, str]] = field(default_factory=list)
 
 
@@ -111,6 +114,51 @@ def _ingest_device_vo2max(
     non_empty = [frame for frame in frames if not frame.empty]
     if non_empty:
         upsert_device_vo2max(paths, pd.concat(non_empty, ignore_index=True))
+
+
+def _ingest_resting_hr(
+    paths: Paths,
+    source_root: Path,
+    *,
+    athlete_id: str,
+    seen: set[str],
+    now: datetime,
+    result: IngestResult,
+    ledger_rows: list[dict[str, object]],
+) -> None:
+    """Read every UDS file not yet in the ledger and upsert its resting heart rates.
+
+    Ledgered by content hash like ``_ingest_device_vo2max``, so a second
+    ingest of the same export reads nothing, and a file that failed is
+    retried next time.
+    """
+    frames: list[pd.DataFrame] = []
+    for path in find_uds_files(source_root):
+        sha256 = sha256_file(path)
+        if sha256 in seen:
+            result.skipped_already_processed += 1
+            continue
+        seen.add(sha256)
+        try:
+            frames.append(parse_uds_file(path, athlete_id=athlete_id, source_file_sha256=sha256))
+            result.resting_hr_files += 1
+            status = "resting_hr"
+        except Exception as exc:  # noqa: BLE001 - one bad file must not abort the run
+            result.errors.append((str(path), f"{type(exc).__name__}: {exc}"))
+            status = "error"
+        ledger_rows.append(
+            {
+                "source_file_sha256": sha256,
+                "source_file": path.name,
+                "activity_id": None,
+                "source": SOURCE_GARMIN_EXPORT,
+                "status": status,
+                "ingested_at": now,
+            }
+        )
+    non_empty = [frame for frame in frames if not frame.empty]
+    if non_empty:
+        upsert_resting_hr(paths, pd.concat(non_empty, ignore_index=True))
 
 
 def ingest(
@@ -267,6 +315,16 @@ def ingest(
 
     if archive_kind == "garmin":
         _ingest_device_vo2max(
+            paths,
+            source_root,
+            athlete_id=athlete_id,
+            seen=seen,
+            now=now,
+            result=result,
+            ledger_rows=ledger_rows,
+        )
+
+        _ingest_resting_hr(
             paths,
             source_root,
             athlete_id=athlete_id,

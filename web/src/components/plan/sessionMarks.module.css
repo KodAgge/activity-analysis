@@ -1,0 +1,80 @@
+/*
+ * The kind-to-slot map's five slots, each a custom property that whatever
+ * draws a session's kind reads: the calendar's bar and legend swatch, and
+ * the session detail's swatch. The values are the validated categorical
+ * palette, never restated as colours here.
+ */
+.slot1 { --kind: var(--series-1); }
+.slot2 { --kind: var(--series-2); }
+.slot3 { --kind: var(--series-3); }
+.slot4 { --kind: var(--series-4); }
+.slot5 { --kind: var(--series-5); }
+.neutral { --kind: var(--border-strong); }
+
+/*
+ * What a slot derives from `--kind`, declared on the slot classes
+ * themselves so `var(--kind)` resolves to the slot's colour; declared on
+ * `:root` it would resolve before any slot sets it.
+ *
+ * `--kind-tint` is a card's fill in the kind, Runna's tinted workout card
+ * on a white page: the kind at 12% over `--raised`. Text on it stays
+ * `--ink`, 12.9:1 at worst (intervals). `--ink-dim` is not enough there,
+ * 4.21:1 on the intervals tint, so secondary text on a tint is
+ * `--kind-tint-dim`, `--ink-dim` with a fifth of `--ink`: 5.26:1 at worst.
+ *
+ * `--kind-ink` is the kind as text, for a kind's name set in its own
+ * colour as Runna's activity tag is: the kind with 35% of `--ink`, since
+ * the long-run slot itself is 3.38:1 on white. 4.98:1 at worst, the long
+ * run on its own tint, and 5.70:1 on `--raised`.
+ *
+ * `sessionMarks.test.ts` reads this file and the tokens and holds every
+ * figure above to 4.5:1, so a change to a percentage that breaks one fails.
+ */
+.slot1,
+.slot2,
+.slot3,
+.slot4,
+.slot5,
+.neutral {
+  --kind-tint: color-mix(in srgb, var(--kind) 12%, var(--raised));
+  --kind-tint-dim: color-mix(in srgb, var(--ink-dim) 80%, var(--ink));
+  --kind-ink: color-mix(in srgb, var(--kind) 65%, var(--ink));
+}
+
+/*
+ * The three ways a kind is drawn, Runna's: a solid bar down an element's
+ * left edge, a square swatch, and a tinted fill. Each goes on an element
+ * that has a slot class or sits inside one. Sizes have fallbacks rather
+ * than defaults, so a block sets `--kind-bar-width` or `--kind-swatch-size`
+ * on any element at or above the mark and wins without a specificity
+ * contest.
+ *
+ * The bar: 7 device px on Runna's calendar at 1.13 px/pt and 9 at 1.07,
+ * 6-8 pt, drawn as the left edge of a rounded workout card; 6px here. A
+ * border rather than an inset shadow, so it prints and follows the
+ * element's radius.
+ */
+.bar {
+  border-left: var(--kind-bar-width, calc(var(--space-1) * 1.5)) solid var(--kind);
+}
+
+/* The square: Runna's week card draws 28 device px squares with rounded
+   corners on a 640 px screen, 1.64 px/pt, so 17 pt; 16px here, its
+   corners a fifth of its side. */
+.swatch {
+  display: inline-block;
+  flex: none;
+  width: var(--kind-swatch-size, var(--space-4));
+  height: var(--kind-swatch-size, var(--space-4));
+  border-radius: calc(var(--kind-swatch-size, var(--space-4)) / 5);
+  background: var(--kind);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.tint {
+  background: var(--kind-tint);
+  color: var(--ink);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}

@@ -1,0 +1,54 @@
+/*
+ * A chart card's stat row, after Runna's progress chart (the gauntlet's
+ * `ref/progress-chart.png`): `KILOMETERS 25.30`, `TIME 3h 8m 33s`,
+ * `ACTIVITIES 6` across the card over the bars. There the label is a
+ * small dim word and the value the largest type on the card but the
+ * title's, two weights and two sizes; here `--text-label` over
+ * `--text-stat-lg`, the scale's own stat pair.
+ *
+ * Columns of at least 6rem share the row, so three or four figures sit on
+ * one line across a desktop card and wrap two to a line on a phone rather
+ * than squeezing a label onto three lines.
+ */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
+  gap: var(--space-3) var(--space-4);
+  margin: 0;
+}
+
+.stat {
+  min-width: 0;
+}
+
+.label {
+  margin: 0 0 var(--space-1);
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+}
+
+.value {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--text-stat-lg);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  white-space: nowrap;
+}
+
+/* The unit beside the number, a step down and regular, as Runna's `km`. */
+.unit {
+  font-size: var(--text-small);
+  font-weight: var(--weight-medium);
+  color: var(--ink-dim);
+}
+
+/* Four figures do not fit a phone's card at 6rem each: two and two, not
+   three and one left over on a line of its own. */
+@media (max-width: 40rem) {
+  .stats[data-count='4'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

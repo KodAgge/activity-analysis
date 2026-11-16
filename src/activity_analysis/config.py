@@ -26,6 +26,11 @@ INGEST_VERSION = 3
 
 #: Stamped into every derived row. Bump when a metric definition changes, so
 #: an old derived file is identifiable rather than silently mixed with a new one.
+#: Bump in the same pull request as each change that alters what a stored
+#: column means or holds, not once per phase spread over several pull
+#: requests: `/api/health`'s `stale` flag sees only a version mismatch, so a
+#: store recomputed partway through a phase sharing one bump reports the
+#: current version with a mixed meaning. 6 is the one exception.
 #: 2 added the activity tag table. 3 added `rep_count` to it. 4 added
 #: `rep_pattern` to it. 5 added the place columns to `activity_metrics`.
 #: 6 is phase 4 and covers all three of its tables: `activity_efficiency`,
@@ -42,7 +47,16 @@ INGEST_VERSION = 3
 #: 12 adds the four decoupling half means to activity_efficiency.
 #: 13 counts a run slower than 9:00/km as a walk, recorded in the new
 #: sport_reclassifications table, and leaves it out of every other one.
-ANALYSIS_VERSION = 13
+#: 15 adds the threshold heart-rate estimate and the load built on it,
+#: Banister's TRIMP on the measured resting and maximum heart rate:
+#: `threshold_readings`, `run_load` with each run's TRIMP, its rest and max,
+#: their fallback flags and the measured day the rest rests on,
+#: `zone_time_estimated` with each zone's TRIMP, `hr_histogram`,
+#: `training_load` with the daily fitness, fatigue, form and running distance,
+#: and `training_load_weekly` with their weekly means. 14 was taken by an
+#: earlier draft of the same tables on the branch that built them and never
+#: reached a released store.
+ANALYSIS_VERSION = 15
 
 
 @dataclass(frozen=True)
@@ -68,6 +82,13 @@ class Paths:
         return self.data / "derived"
 
     @property
+    def plans_dir(self) -> Path:
+        return self.data / "plans"
+
+    def plan_dir(self, goal_id: str) -> Path:
+        return self.plans_dir / goal_id
+
+    @property
     def streams_dir(self) -> Path:
         return self.canonical / "streams"
 
@@ -90,6 +111,10 @@ class Paths:
     @property
     def device_vo2max_parquet(self) -> Path:
         return self.canonical / "device_vo2max.parquet"
+
+    @property
+    def resting_hr_parquet(self) -> Path:
+        return self.canonical / "resting_hr.parquet"
 
     @property
     def derived_streams_dir(self) -> Path:
@@ -150,6 +175,30 @@ class Paths:
     @property
     def sport_reclassifications_parquet(self) -> Path:
         return self.derived / "sport_reclassifications.parquet"
+
+    @property
+    def threshold_readings_parquet(self) -> Path:
+        return self.derived / "threshold_readings.parquet"
+
+    @property
+    def run_load_parquet(self) -> Path:
+        return self.derived / "run_load.parquet"
+
+    @property
+    def zone_time_estimated_parquet(self) -> Path:
+        return self.derived / "zone_time_estimated.parquet"
+
+    @property
+    def hr_histogram_parquet(self) -> Path:
+        return self.derived / "hr_histogram.parquet"
+
+    @property
+    def training_load_parquet(self) -> Path:
+        return self.derived / "training_load.parquet"
+
+    @property
+    def training_load_weekly_parquet(self) -> Path:
+        return self.derived / "training_load_weekly.parquet"
 
     @property
     def basemap_dir(self) -> Path:

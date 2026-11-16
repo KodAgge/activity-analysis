@@ -1,0 +1,97 @@
+/*
+ * The weekly load chart, `PlanVolume.module.css` over again: the same
+ * column width, the same measured viewBox height, and the same pale
+ * planned bar beside an ink run bar, so the two weekly charts read alike.
+ */
+.chart {
+  /* The progress dashes' two tones, as `PlanVolume.module.css`. */
+  --load-planned: color-mix(in srgb, var(--chart-rule) 50%, var(--border));
+  --load-run: var(--ink);
+
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* The calendar's own loading line, `PlanCalendar.module.css`'s `.loading`. */
+.note {
+  margin: 0;
+  color: var(--ink-dim);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.panel {
+  width: 100%;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* Runna's grid: faint rules the bars stand in front of. */
+.rule {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+/* The ladder and the week labels, `ProgressionScatter.module.css`'s `.axisLabel`. */
+.axisLabel {
+  fill: var(--ink-dim);
+  font-family: inherit;
+  font-size: var(--text-label);
+  font-variant-numeric: tabular-nums;
+}
+
+/* What the plan asks: the dashes' todo grey. */
+.planned {
+  fill: var(--load-planned);
+}
+
+/* What was run: the dashes' done ink. */
+.run {
+  fill: var(--load-run);
+}
+
+/* The key, `ProgressionScatter.module.css`'s `.directionKey`. */
+.key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  margin-top: auto;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+}
+
+.key li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.swatch {
+  display: block;
+  width: 10px;
+  height: 12px;
+  /* A bar's rounded cap in small: a third of the scale's smallest radius. */
+  border-radius: calc(var(--radius-sm) / 3) calc(var(--radius-sm) / 3) 0 0;
+}
+
+.swatchPlanned {
+  background: var(--load-planned);
+}
+
+.swatchRun {
+  background: var(--load-run);
+}

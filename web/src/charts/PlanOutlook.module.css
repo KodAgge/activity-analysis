@@ -1,0 +1,131 @@
+/*
+ * The VO2max outlook. Sized as `PlanVolume.module.css` sizes its own: the
+ * column's width, and the height the measured viewBox gives it, here two
+ * panels and a date axis tall.
+ */
+.chart {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* `PlanVolume.module.css`'s `.note`. */
+.note {
+  margin: 0;
+  color: var(--ink-dim);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.panel {
+  width: 100%;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* Runna's grid: faint rules the marks stand in front of. */
+.rule {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.axisLabel {
+  fill: var(--ink-dim);
+  font-family: inherit;
+  font-size: var(--text-label);
+  /* Proportional: tabular figures space out the period and colon, `34 . 5`, `22 : 00`. */
+  font-variant-numeric: proportional-nums;
+}
+
+/* Each panel's name over its top-left corner. */
+.caption {
+  fill: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+}
+
+/* The goal, as `PlanTrajectory.module.css` draws its own: ink, not the
+   accent, which is the intervals' red elsewhere on the page. */
+.target {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.targetLabel {
+  fill: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  /* A lone label, so proportional: tabular figures print `35 .5`. */
+  font-variant-numeric: proportional-nums;
+  paint-order: stroke;
+  stroke: var(--plan-surface, var(--page));
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+/* What Claude expects: dashed and hollow, in the planned outlines' tone. */
+.expectedLine {
+  fill: none;
+  stroke: var(--ink-dim);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+.expectedPoint {
+  fill: var(--plan-surface, var(--page));
+  stroke: var(--ink-dim);
+  stroke-width: 1.5;
+}
+
+/* What was measured: filled, as the trajectory's points. */
+.measured {
+  fill: var(--ink);
+}
+
+/* Garmin's own number by day: thin, so the expected line stays readable over it. */
+.device {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+
+.deviceDot {
+  fill: var(--ink);
+}
+
+.key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  margin-top: auto;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+}
+
+.key li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.swatch {
+  display: block;
+  flex: none;
+  overflow: visible;
+}

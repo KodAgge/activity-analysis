@@ -1,0 +1,86 @@
+/*
+ * The weekly intensity mix. Sized as `PlanVolume.module.css` sizes its
+ * own: the column's width, and the height the measured viewBox gives it.
+ */
+.chart {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.panel {
+  width: 100%;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* Runna's grid: faint rules the marks stand in front of. */
+.rule {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.axisLabel {
+  fill: var(--ink-dim);
+  font-family: inherit;
+  font-size: var(--text-label);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A segment takes its kind's colour from the slot class beside this one,
+   which sets `--kind`; a hairline of the card between two segments, as
+   the lead-in's and the heart-rate mix's. */
+.segment {
+  fill: var(--kind);
+  stroke: var(--plan-surface, var(--page));
+  stroke-width: 1;
+}
+
+/* An outline week: hatched in the neutral tone, with the planned bar's dashed edge. */
+.outline {
+  stroke: var(--ink-dim);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 2;
+}
+
+.hatch {
+  stroke: var(--border-strong);
+  stroke-width: 2;
+}
+
+.key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  margin-top: auto;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+}
+
+.key li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.swatch {
+  display: block;
+  width: 10px;
+  height: 12px;
+  box-sizing: border-box;
+  background: var(--kind);
+}
+
+.swatchOutline {
+  border: 1.5px dashed var(--ink-dim);
+  background: repeating-linear-gradient(45deg, var(--border-strong) 0 2px, transparent 2px 5px);
+}

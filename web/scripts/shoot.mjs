@@ -42,7 +42,7 @@ const SCREENS = {
   activities: '/activities',
   detail: `/activities/${REFERENCE_ACTIVITY}`,
   records: '/records',
-  trends: '/trends',
+  trends: '/trends?period=all',
   progression: '/progression?distance=5k',
 }
 

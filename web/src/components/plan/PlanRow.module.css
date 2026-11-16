@@ -1,0 +1,158 @@
+/*
+ * A row of a link list on a plan card, after Runna's estimated race times
+ * (`plan-home-flat`): a round badge at the start, a bold value over a
+ * small dim line, the state at the far end with a chevron after it, as
+ * Runna ends a row that opens something (`PACE INSIGHTS ->`), and a
+ * hairline between rows rather than a box around each. The whole row is
+ * the link.
+ */
+.list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 24rem), 1fr));
+  column-gap: var(--space-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Every row carries the rule above it, the first included, which then
+   reads as the rule under the card's title; so a list wide enough for two
+   columns rules both alike. */
+.list > li {
+  border-top: var(--hairline);
+}
+
+@media print {
+  .row {
+    break-inside: avoid;
+  }
+}
+
+.row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  margin-inline: calc(var(--space-2) * -1);
+  padding: var(--space-3) var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.row:hover {
+  background: var(--panel);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* The round badge, Runna's race badge at 40px: the version number or the
+   race's distance, bold on the quiet panel. */
+.mark {
+  display: grid;
+  place-items: center;
+  width: var(--space-10);
+  height: var(--space-10);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--border);
+  font-size: var(--text-small);
+  font-weight: var(--weight-bold);
+}
+
+/* The version on screen: its badge filled in ink, which reads without
+   colour as the one solid mark in the column. */
+.markCurrent {
+  background: var(--ink);
+  box-shadow: none;
+  color: var(--raised);
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* One short bold value, as Runna leads a race-time row with its time,
+   then the longer line quiet and small under it. */
+.title {
+  font-size: var(--text-body);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+}
+
+.detail {
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+  line-height: var(--leading-tight);
+}
+
+/* The status as a word in a pill, each state drawn its own way so that
+   none needs colour to be told from the next. Every pill carries a 1px
+   border, transparent where unused, so all four sit at one size.
+   Contrast: `--raised` on `--ink` 16:1, `--ink` on `--raised` 16:1,
+   `--ink-dim` on `--panel` 4.68:1 and on `--raised` 5.13:1. */
+.pill {
+  padding: calc(var(--space-1) - 1px) calc(var(--space-2) - 1px);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  white-space: nowrap;
+}
+
+/* In force: the one solid mark. */
+.inForce {
+  background: var(--ink);
+  color: var(--raised);
+}
+
+/* Awaiting a decision: the ink outline, open where the accepted one is
+   filled. */
+.pending {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+/* Replaced by a later version, or a goal laid to rest: a quiet fill. */
+.past {
+  background: var(--panel);
+  color: var(--ink-dim);
+}
+
+/* Taken back before it was ever in force: a broken outline. */
+.dropped {
+  border: 1px dashed var(--ink-dim);
+  color: var(--ink-dim);
+}
+
+/* The chevron the assessment's disclosure row ends on, pointing on. */
+.chevron {
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: var(--space-1);
+  border-right: 2px solid var(--ink-dim);
+  border-bottom: 2px solid var(--ink-dim);
+  transform: rotate(-45deg);
+}
+
+@media print {
+  .row:hover {
+    background: transparent;
+  }
+
+  .list > li {
+    break-inside: avoid;
+  }
+
+  /* Nothing opens on paper. */
+  .chevron {
+    display: none;
+  }
+}

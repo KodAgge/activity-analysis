@@ -658,7 +658,7 @@
   color: var(--ink-dim);
   font-size: var(--text-caption);
   font-weight: var(--weight-regular);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: proportional-nums;
 }
 
 /* The models behind a range, and the ordinary-run band: present but

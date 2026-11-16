@@ -19,6 +19,7 @@ import pytest
 
 from activity_analysis.config import Paths
 from activity_analysis.identity import compute_activity_id
+from activity_analysis.plan.store import PlanStore
 from activity_analysis.store.writer import (
     read_activities,
     read_activity_metrics,
@@ -151,6 +152,28 @@ def test_two_builds_are_identical(two_builds: tuple[Paths, Paths, Any]) -> None:
         )
     pd.testing.assert_frame_equal(read_best_efforts(first), read_best_efforts(second))
     pd.testing.assert_frame_equal(read_device_vo2max(first), read_device_vo2max(second))
+    goal = PlanStore(first).goals()[0].goal_id
+    assert PlanStore(first).version(goal, 2) == PlanStore(second).version(goal, 2)
+
+
+def test_the_plan_was_revised_and_accepted(two_builds: tuple[Paths, Paths, Any]) -> None:
+    paths, _, summary = two_builds
+    store = PlanStore(paths)
+    index = store.index(summary.plan_goal)
+
+    # Proposed and accepted before its first week, then revised at --end: the
+    # store's own checks passed both, and the revision supersedes the first.
+    assert index.status == "active"
+    assert [(e.number, e.status) for e in index.versions] == [(1, "superseded"), (2, "accepted")]
+    revised = store.version(summary.plan_goal, 2)
+    assert revised.provenance.data_through is not None
+    past = [s for w in revised.weeks for s in w.sessions if s.date <= END]
+    assert past, "the plan starts before --end, so some of its sessions are done"
+    # Every session up to --end is one of the store's runs, judged done.
+    stored = set(read_activities(paths)["activity_id"])
+    assert {o.session_id for o in revised.outcomes} == {s.id for s in past}
+    assert all(o.verdict == "done" and set(o.activity_ids) <= stored for o in revised.outcomes)
+    assert revised.changes and revised.changes[0].session_ids
 
 
 def test_refuses_a_root_that_already_holds_a_store(script: ModuleType, tmp_path: Path) -> None:

@@ -1,0 +1,195 @@
+/*
+ * A session's workout profile. The full size is the column's width and the
+ * height its measured viewBox gives it; the mini fills its calendar day at
+ * a fixed height. Every fill reads `--kind`, which the kind's slot class
+ * on the wrapper sets (`components/plan/sessionMarks.module.css`), or a
+ * token, so the profile draws a kind as the calendar does.
+ */
+.profile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* `position: relative` is what the readout is placed against. */
+.panel {
+  position: relative;
+  width: 100%;
+  border-radius: var(--radius-sm);
+}
+
+.panel:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.mini {
+  display: block;
+  width: 100%;
+  line-height: 0;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.mini .svg {
+  height: 18px;
+}
+
+/*
+ * Warm-up and cool-down: one slate tone on every kind, never a tint of
+ * `--kind`, which on an interval session read as faded work. `--ink-dim`
+ * holds 3:1 against `--raised` and `--page` (5.13 and 4.39), which
+ * `SessionProfile.test.tsx` checks; recovery is the lighter `--chart-rule`,
+ * told apart from it by lightness.
+ */
+.soft {
+  fill: var(--ink-dim);
+}
+
+.work {
+  fill: var(--kind);
+}
+
+/* Strides: the darkest ink, a thin spike that reads apart from every kind's colour. */
+.strides {
+  fill: var(--ink);
+}
+
+.recovery {
+  fill: var(--chart-rule);
+}
+
+/*
+ * The full profile's two tones, which its key names, Runna's two of one
+ * hue: the easy roles the kind's tint (`KIND_MARK.tint`'s colour) under a
+ * cap of the kind, so the pale fill holds its edge on white and on every
+ * slot; work and strides the kind itself (`.work`). The mini keeps the
+ * slate fills above.
+ */
+.easy {
+  fill: var(--kind-tint);
+}
+
+.cap {
+  fill: var(--kind);
+}
+
+/* The ground line the bars stand on. */
+.baseline {
+  stroke: var(--chart-rule);
+  stroke-width: 1;
+}
+
+.active {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.tick {
+  stroke: var(--chart-rule);
+  stroke-width: 1;
+}
+
+.axisLabel {
+  fill: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.setLabel {
+  fill: var(--ink);
+  font-family: inherit;
+  font-size: var(--text-small);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: proportional-nums;
+}
+
+/*
+ * The hover and keyboard readout, in the shape `Histogram.module.css`
+ * draws its own: out of flow, so it adds no height however tall it gets.
+ * It stands on the panel's foot beside the pointer or the focused segment,
+ * `left` from `sessionProfileMath.readoutBeside`, and grows upward: below
+ * the panel it would cover the key, and hung over the top the detail
+ * sheet's own scroll edge would cut it off.
+ */
+.readout {
+  position: absolute;
+  bottom: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--raised);
+  border: var(--hairline);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-float);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.readoutWhen {
+  margin: 0 0 var(--space-1);
+  color: var(--ink);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.readoutRow {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+  line-height: var(--leading-tight);
+  font-variant-numeric: proportional-nums;
+}
+
+/* Under the axis: the key. */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  margin: 0;
+  padding: 0;
+  color: var(--ink);
+  font-size: var(--text-small);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-body);
+  list-style: none;
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+}
+
+.swatch {
+  display: inline-block;
+  flex: none;
+  width: var(--space-3);
+  height: var(--space-3);
+  margin-right: var(--space-2);
+  border-radius: calc(var(--space-3) / 5);
+  background: var(--kind);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+/* The easy tone's swatch: `KIND_MARK.tint` under the same cap, the tint
+   restated so it wins over `.swatch`'s kind whichever sheet loads last. */
+.swatch.swatchEasy {
+  background: var(--kind-tint);
+  border: 1px solid var(--kind);
+  border-top-width: 3px;
+}
+
+@media print {
+  .readout {
+    display: none;
+  }
+}

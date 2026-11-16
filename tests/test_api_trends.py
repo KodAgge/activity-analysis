@@ -8,6 +8,8 @@ hand to test the join and the order.
 
 from __future__ import annotations
 
+from datetime import date
+
 import duckdb
 import pyarrow.parquet as pq
 import pytest
@@ -157,6 +159,19 @@ def test_the_endpoint_serves_null_references_until_the_fit_exists(
     assert instants == sorted(instants)
     if not body["items"]:
         assert body["references"] == {"slow_mps": None, "median_mps": None, "fast_mps": None}
+
+
+def test_trends_keep_the_points_between_since_and_through(
+    store: duckdb.DuckDBPyConnection,
+) -> None:
+    _populate(store)
+
+    def ids(**bounds: date) -> list[str]:
+        return [i["activity_id"] for i in queries.trends(store.cursor(), **bounds)[1]]
+
+    assert ids(through=date(2026, 1, 31)) == ["jan"]
+    assert ids(since=date(2026, 1, 2)) == ["feb"]
+    assert ids(since=date(2026, 1, 1), through=date(2026, 2, 1)) == ["jan", "feb"]
 
 
 def test_the_smoothed_columns_are_served(store: duckdb.DuckDBPyConnection) -> None:

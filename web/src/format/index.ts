@@ -76,6 +76,17 @@ export function paceFromSpeed(speedMps: number | null): string {
 }
 
 /**
+ * A pace held as seconds per kilometre, as a pace chart's axis holds it:
+ * `4:30`, or `4:30/km` with `withUnit`. Through the speed it is the
+ * reciprocal of, so it reads exactly as `paceFromSpeed` and `pace` do.
+ */
+export function paceOfSeconds(secondsPerKm: number, withUnit = false): string {
+  if (!Number.isFinite(secondsPerKm) || secondsPerKm <= 0) return NO_VALUE
+  const speed = speedFromPaceSeconds(secondsPerKm)
+  return withUnit ? pace(speed) : paceFromSpeed(speed)
+}
+
+/**
  * Pace as `m:ss/km`, unit included, or the bare no-value glyph - never the
  * glyph with a unit stapled onto it.
  *
@@ -628,7 +639,7 @@ function signedOneDecimal(value: number): string {
  * A VO2max estimate to one decimal, or the no-value glyph.
  *
  * One decimal is deliberate. The heart rate estimate's residual against the
- * athlete's own performances is 2.37 VDOT units (see
+ * athlete's own performances is 2.30 VDOT units (see
  * `docs/reference/math/predictions.md`, "The calibration", which owns that
  * figure), so a second decimal would assert
  * precision the model does not have. No unit: VO2max is conventionally
@@ -686,6 +697,52 @@ export function slopeMeasure(value: number | null | undefined, unit: string): Me
 export function formatDecoupling(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return NO_VALUE
   return `${signedOneDecimal(value)}%`
+}
+
+/**
+ * A fitness or fatigue figure to one decimal, `56.0`, or with `signed` a
+ * form figure, `-12.8`, `+0.0`, signed as `signedOneDecimal` signs it.
+ */
+export function formatLoadFigure(value: number, signed = false): string {
+  return signed ? signedOneDecimal(value) : value.toFixed(1)
+}
+
+/** The days in a week: what a per-day load is multiplied by to read as a weekly one. */
+const DAYS_PER_WEEK = 7
+
+/**
+ * A per-day training load as the weekly load it amounts to.
+ *
+ * Fitness (CTL) and fatigue (ATL) are stored per day, the model's own unit,
+ * while the Trends chart draws them on the weekly TRIMP bars' scale: times
+ * seven, fitness reads as the weekly load the athlete is used to and fatigue
+ * as the weekly load of late. A unit change, per day to per week, so it is
+ * made here with the others rather than in a chart.
+ */
+export function perDayAsWeekly(perDay: number): number {
+  return perDay * DAYS_PER_WEEK
+}
+
+/**
+ * A training load, TRIMP or a fitness or fatigue, as a whole number with no
+ * unit: `452`, or the no-value glyph. TRIMP is unitless, and a decimal would
+ * claim a precision the heart rate behind it does not have.
+ */
+export function loadLabel(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return NO_VALUE
+  return String(Math.round(value) + 0)
+}
+
+/**
+ * Form, fitness less fatigue, signed and whole: `+5`, `-13`, or `0`
+ * unsigned. Signed because which side of zero it sits on is the reading:
+ * below zero the recent load is above what the athlete is used to.
+ */
+export function formLabel(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return NO_VALUE
+  const whole = Math.round(value)
+  if (whole === 0) return '0'
+  return whole > 0 ? `+${String(whole)}` : String(whole)
 }
 
 /**
@@ -894,6 +951,16 @@ export function calendarDayOfDate(date: string): number {
   return new Date(`${date}T00:00:00Z`).getTime() / MS_PER_DAY
 }
 
+/**
+ * The day number of a `Date` on the browser's own wall clock, on the same
+ * axis as `calendarDayOfDate`. It reads the local year, month and day
+ * rather than the UTC instant, so "today" is the day the athlete is
+ * living, not the one UTC is on late in the evening.
+ */
+export function calendarDayOfLocalDate(date: Date): number {
+  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / MS_PER_DAY
+}
+
 /** `Oct 2025`, from a day number - for an axis tick at a month boundary. */
 export function monthYearLabel(day: number): string {
   const date = dateOfCalendarDay(day)
@@ -1001,4 +1068,259 @@ export function formatPredictionSpan(seconds: number[]): string {
   const low = duration(Math.min(...finite))
   const high = duration(Math.max(...finite))
   return low === high ? low : `${low}${RANGE_JOIN}${high}`
+}
+
+/*
+ * The training plan's words. A plan is written in SI like everything the
+ * API serves - metres, seconds, m/s - and dated in the athlete's local
+ * calendar, so each of these is the one conversion of its kind for the
+ * Plan view and the calendar under it.
+ */
+
+/** Race distances with a name of their own, keyed by metres. */
+const NAMED_RACE_DISTANCE: ReadonlyMap<number, string> = new Map([
+  [21097.5, 'Half marathon'],
+  [42195, 'Marathon'],
+])
+
+/**
+ * A goal's distance as a race is named: `5 km`, `1.5 km`, `Half marathon`.
+ * A plan's goal carries metres, not a best-effort key, so this reads the
+ * metres rather than going through `distanceKeyLabel`.
+ */
+export function raceDistanceLabel(metres: number): string {
+  return NAMED_RACE_DISTANCE.get(metres) ?? `${trimmedNumber(metres / 1000)} km`
+}
+
+/**
+ * A goal's distance in its 40px round badge, to the tenth of a kilometre
+ * as `raceDistanceLabel` gives it: `1.5k`, `5k`, `12.5k`. A named race,
+ * whose label is a word, is whole: `21k` and `42k`, which `21.1k` and
+ * `42.2k` would crowd.
+ */
+export function raceDistanceBadge(metres: number): string {
+  const km = metres / 1000
+  return `${NAMED_RACE_DISTANCE.has(metres) ? String(Math.round(km)) : trimmedNumber(km)}k`
+}
+
+/** A goal as the athlete would say it: `5 km under 25:00`. */
+export function goalTitle(distanceM: number, targetTimeS: number): string {
+  return `${raceDistanceLabel(distanceM)} under ${duration(targetTimeS)}`
+}
+
+/** `1 day`, `35 days`. */
+export function dayCount(count: number): string {
+  return `${String(count)} ${count === 1 ? 'day' : 'days'}`
+}
+
+/** `1 change`, `4 changes`: the size of a proposal's change summary. */
+export function changeCount(count: number): string {
+  return `${String(count)} ${count === 1 ? 'change' : 'changes'}`
+}
+
+/**
+ * `13 March`, from a day number, with the year added only when it is
+ * not today's: a plan runs weeks ahead, so the year is noise until the
+ * plan crosses New Year, and then it is the one thing that tells two
+ * Januaries apart. Both are day numbers on the `calendarDayOfDate` axis.
+ */
+export function dayMonthNear(day: number, today: number): string {
+  const date = dateOfCalendarDay(day)
+  const year = date.getUTCFullYear()
+  const base = `${date.getUTCDate()} ${getArrayElement(MONTHS, date.getUTCMonth())}`
+  return year === dateOfCalendarDay(today).getUTCFullYear() ? base : `${base} ${String(year)}`
+}
+
+/** `Sunday 29 November`: `dayMonthNear` with its weekday, for a day to plan around. */
+export function weekdayDayMonthNear(day: number, today: number): string {
+  return `${getArrayElement(WEEKDAYS, dateOfCalendarDay(day).getUTCDay())} ${dayMonthNear(day, today)}`
+}
+
+/**
+ * A planned session's kind as a reader would say it. Open like
+ * `effortTagLabel`: the kinds belong to `plan/models.py`, and a kind added
+ * there must degrade to its own key rather than break the page.
+ */
+const SESSION_KIND_LABEL: Readonly<Record<string, string>> = {
+  easy: 'Easy run',
+  long: 'Long run',
+  intervals: 'Intervals',
+  tempo: 'Tempo',
+  threshold: 'Threshold',
+  strides: 'Strides',
+  time_trial: 'Time trial',
+  race: 'Race',
+  rest: 'Rest',
+  cross_training: 'Cross-training',
+}
+
+export function sessionKindLabel(kind: string): string {
+  return SESSION_KIND_LABEL[kind] ?? kind
+}
+
+/** A kind as it reads after a distance in a checkpoint label: `3 km TT`, `13 km long run`. */
+const CHECKPOINT_KIND_SHORT: Readonly<Record<string, string>> = { time_trial: 'TT' }
+
+/**
+ * A plan checkpoint as the trajectory chart labels it: `3 km TT 11:30`
+ * with the distance the target is at and the checkpoint's own target,
+ * `Time trial 11:30` without the distance, and the kind alone without a
+ * target. The distance is what keeps a 3 km target from being read as a
+ * time at the goal's distance on the chart beside it.
+ */
+export function checkpointLabel(kind: string, targetDistanceM: number | null, targetS: number | null): string {
+  if (targetS === null) return sessionKindLabel(kind)
+  if (targetDistanceM === null) return `${sessionKindLabel(kind)} ${duration(targetS)}`
+  const short = CHECKPOINT_KIND_SHORT[kind] ?? sessionKindLabel(kind).toLowerCase()
+  return `${raceDistanceLabel(targetDistanceM)} ${short} ${duration(targetS)}`
+}
+
+/** A session step's role: `warmup` is `Warm-up`. Open, as `sessionKindLabel`. */
+const STEP_ROLE_LABEL: Readonly<Record<string, string>> = {
+  warmup: 'Warm-up',
+  work: 'Work',
+  recovery: 'Recovery',
+  cooldown: 'Cool-down',
+  strides: 'Strides',
+}
+
+export function stepRoleLabel(role: string): string {
+  return STEP_ROLE_LABEL[role] ?? role
+}
+
+/** Claude's verdict on the goal, `likely` as `Likely`. */
+export function feasibilityLabel(verdict: string): string {
+  return verdict.charAt(0).toUpperCase() + verdict.slice(1)
+}
+
+/** A race's surface: `track` as `Track`, and `other` as `Other surface` so it is not a bare `Other`. */
+const SURFACE_LABEL: Readonly<Record<string, string>> = {
+  track: 'Track',
+  road: 'Road',
+  trail: 'Trail',
+  other: 'Other surface',
+}
+
+export function surfaceLabel(surface: string): string {
+  return SURFACE_LABEL[surface] ?? surface
+}
+
+/** A goal's or a version's status, `superseded` as `Superseded`. */
+export function planStatusLabel(status: string): string {
+  return status.charAt(0).toUpperCase() + status.slice(1)
+}
+
+/** Claude's verdict on a past session, `partial` as `Partial`. */
+export function outcomeLabel(verdict: string): string {
+  return verdict.charAt(0).toUpperCase() + verdict.slice(1)
+}
+
+/**
+ * A plan week's phase, which Claude writes as free text: its first letter
+ * raised, so `build` and `Build` read the same, and the rest left alone.
+ */
+export function phaseLabel(phase: string): string {
+  return phase.charAt(0).toUpperCase() + phase.slice(1)
+}
+
+/**
+ * A calendar cell's day, `17`, from a day number: the bare day of the
+ * month, since the row it sits in already places it. The 1st carries its
+ * month, `1 Dec`, so a month boundary inside a week is visible, and so
+ * does any cell `withMonth` asks for, such as the calendar's first.
+ */
+export function dayOfMonthLabel(day: number, withMonth = false): string {
+  const date = dateOfCalendarDay(day)
+  const dayOfMonth = date.getUTCDate()
+  if (!withMonth && dayOfMonth !== 1) return String(dayOfMonth)
+  return `${String(dayOfMonth)} ${getArrayElement(MONTHS, date.getUTCMonth()).slice(0, 3)}`
+}
+
+/**
+ * A step's length, `800 m` under a kilometre and `1.2 km` from one up, or
+ * its duration, `20 s` under a minute, `20 min` for whole minutes and
+ * `1:30` otherwise. A step carries exactly one of the two; with neither it
+ * is the no-value glyph.
+ */
+function stepLength(distanceM: number | null, durationS: number | null): string {
+  if (distanceM !== null && Number.isFinite(distanceM)) {
+    return distanceM < 1000 ? metresLabel(distanceM) : `${trimmedNumber(distanceM / 1000)} km`
+  }
+  if (durationS !== null && Number.isFinite(durationS)) {
+    const seconds = Math.round(durationS)
+    if (seconds < 60) return `${String(seconds)} s`
+    if (seconds % 60 === 0) return `${String(seconds / 60)} min`
+    return duration(seconds)
+  }
+  return NO_VALUE
+}
+
+/** A step as its repeats and its length: `6 × 800 m`, `20 min`. */
+export function stepAmount(repeat: number, distanceM: number | null, durationS: number | null): string {
+  const length = stepLength(distanceM, durationS)
+  if (length === NO_VALUE) return NO_VALUE
+  return repeat > 1 ? `${String(repeat)} × ${length}` : length
+}
+
+/**
+ * A target speed range as paces, the faster first: `4:15-4:20/km`. The
+ * plan stores speeds, never pace, so the faster pace is the higher speed.
+ */
+export function speedRangeAsPace(lowMps: number, highMps: number): string {
+  const fast = paceFromSpeed(highMps)
+  const slow = paceFromSpeed(lowMps)
+  if (fast === NO_VALUE || slow === NO_VALUE) return NO_VALUE
+  return `${fast}-${slow}/km`
+}
+
+/**
+ * A target speed range as a treadmill's km/h to one decimal, the slower
+ * first: `13.8-14.1 km/h`, for a session run indoors when its surface is
+ * closed. A treadmill is set in speed, so the order is the belt's, slower
+ * to faster, where `speedRangeAsPace` puts the faster pace first.
+ */
+export function speedRangeAsKmh(range: { low_mps: number; high_mps: number }): string {
+  const { low_mps: low, high_mps: high } = range
+  if (!Number.isFinite(low) || !Number.isFinite(high)) return NO_VALUE
+  return `${(low * 3.6).toFixed(1)}-${(high * 3.6).toFixed(1)} km/h`
+}
+
+/** A time axis tick, whole minutes from the start: `0`, then `10 min`. */
+export function elapsedMinutesLabel(seconds: number): string {
+  const minutes = Math.round(seconds / 60)
+  return minutes === 0 ? '0' : `${String(minutes)} min`
+}
+
+/**
+ * The zone a heart rate falls in, 1 to 5. Both sides are rounded as
+ * printed, and a bpm on a boundary takes the zone the boundary closes,
+ * since a ceiling is a limit: `plan/render.py`'s `_zone`.
+ */
+export function zoneOf(bpm: number, boundaries: readonly number[]): number {
+  return 1 + boundaries.filter((b) => roundHalfEven(b) < roundHalfEven(bpm)).length
+}
+
+/** Python's `round`, which takes a tie to the even neighbour, so a label here is the CLI's. */
+function roundHalfEven(x: number): number {
+  const floor = Math.floor(x)
+  const diff = x - floor
+  if (diff < 0.5) return floor
+  if (diff > 0.5) return floor + 1
+  return floor % 2 === 0 ? floor : floor + 1
+}
+
+/**
+ * A heart rate range in whole beats: `140-150 bpm`, or `up to 150 bpm`
+ * for a ceiling. With the zone boundaries, the zone of its top follows:
+ * `up to 150 bpm (Z2)`.
+ */
+export function heartRateRange(
+  lowBpm: number | null | undefined,
+  highBpm: number,
+  boundaries?: readonly number[] | null,
+): string {
+  const zone = boundaries == null ? '' : ` (Z${String(zoneOf(highBpm, boundaries))})`
+  const high = String(roundHalfEven(highBpm))
+  if (lowBpm == null) return `up to ${high} bpm${zone}`
+  return `${String(roundHalfEven(lowBpm))}-${high} bpm${zone}`
 }

@@ -1,0 +1,776 @@
+/*
+ * A session written out, laid out by its own width rather than the
+ * screen's: the next session's card, the dialog's sheet and the printed
+ * appendix are three different widths at one screen size. Under 44rem it
+ * is a phone's column: the stats under the title, each step a line with
+ * its targets under it. From 44rem the head and the steps share one table
+ * of four columns, `--session-columns`: a name column, then three equal
+ * columns the head's distance, time and phase stand in and every step's
+ * pace, treadmill km/h and heart rate under them, as Runna's lap cards
+ * hold their three stats in the same columns lap after lap. The
+ * description flows into two columns from 40rem (`PlanProse.module.css`).
+ */
+.detail,
+.table {
+  --session-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr));
+  --session-column-gap: var(--space-6);
+  /* A phone's table: the three columns the head's stats stand in, the
+     heart rate's a little wider, since `up to 167 (Z2)` is the widest
+     value a step sets once the units leave the cells. */
+  --step-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.25fr);
+  --step-column-gap: var(--space-2);
+  /* How far the work's tint reaches past the table on each side, and so
+     how far its text sits inside the tint: Runna's lap card holds its
+     tiles well inside its edge. */
+  --work-bleed: var(--space-3);
+
+  container: session / inline-size;
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.framed {
+  gap: var(--plan-gap, var(--space-4));
+}
+
+/* ---- The head: day, title and kind beside a kind bar, then the stats. */
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* Runna's workout card: the kind's bar down the left edge of the day, the
+   title and the kind's tag. `KIND_MARK.bar` draws the bar. */
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding-left: var(--space-4);
+}
+
+.when {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-body);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-title);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+}
+
+.kindLine {
+  margin: var(--space-1) 0 0;
+  line-height: 1;
+}
+
+/* The kind as a tag, Runna's activity tag: its tint, its name in its
+   colour (`--kind-ink`, at least 4.98:1 on every tint, which
+   `sessionMarks.test.ts` checks), in title case as Runna's "Long Run" is. */
+.tag {
+  display: inline-block;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--kind-ink);
+  font-size: var(--text-small);
+  font-weight: var(--weight-bold);
+}
+
+/* Runna's stat row: a small dim name in capitals over a big value, the
+   columns sharing the width. The names are the grid's first row and the
+   values its second, so every value stands on one baseline whatever its
+   unit; "Planned" is said once, under the row. */
+.statBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.stats {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: auto auto;
+  grid-template-columns: var(--step-columns);
+  grid-auto-columns: minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-1) var(--step-column-gap);
+  margin: 0;
+}
+
+.stat {
+  display: contents;
+}
+
+.statLabel {
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.statValue {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.statNumber {
+  font-size: var(--text-stat-lg);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  font-variant-numeric: proportional-nums;
+}
+
+.statUnit {
+  font-size: var(--text-small);
+  font-weight: var(--weight-bold);
+}
+
+/* A footnote to the row, at the stat names' size, tight under it. */
+.statNote {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  line-height: var(--leading-body);
+}
+
+/* Wide: the head is the table's first row, the title in the name column
+   and the distance, time and phase in the three target columns, the
+   values level with the title's foot. */
+@container session (min-width: 44rem) {
+  .head {
+    display: grid;
+    grid-template-columns: var(--session-columns);
+    column-gap: var(--session-column-gap);
+    align-items: end;
+  }
+
+  .statBlock {
+    grid-column: 2 / -1;
+  }
+
+  /* The three target columns again, the gap the table's, so each stat
+     stands over its column of targets. */
+  .stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: var(--session-column-gap);
+  }
+}
+
+/* ---- The parts: the profile, the steps, the description, the verdict. */
+
+.part {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* The dialog's workout card: the head and the profile on one surface. */
+.workout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* A part's name: a card's title in the dialog; inside the next session's
+   card, a step under it, bold in ink like every other name in the body.
+   Capitals are kept for the head's stat row alone. */
+.sub {
+  margin: 0;
+  font-size: var(--text-heading);
+  font-weight: var(--weight-bold);
+}
+
+.inline .sub {
+  font-size: var(--text-body);
+}
+
+/* ---- The steps: one table at every width, Runna's lap cards repeating
+   the same three stats lap after lap. The heading row names the target
+   columns once, in the head's stat-name capitals; every step is a row
+   under a hairline, its targets in the columns and a dash where it sets
+   none, so a value always stands under its peer. On a phone a row is its
+   name across the width, a swatch in the colour the profile draws its
+   role, the role, the amount and the note, then its three targets in the
+   three columns the head's distance, time and phase stand in. From 44rem
+   the name is the row's first column (`--session-columns`). The work is
+   the hero, Runna's lap card: the row on the kind's tint, its targets one
+   size up. */
+
+.stepsHead {
+  display: grid;
+  grid-template-columns: var(--step-columns);
+  column-gap: var(--step-column-gap);
+  row-gap: var(--space-3);
+  align-items: baseline;
+}
+
+.stepsHead .sub {
+  grid-column: 1 / -1;
+}
+
+/* The target columns' names, Runna's stat names, said once for every row,
+   each over its unit on a phone, where the cells drop their units. */
+.columnName {
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.columnUnit {
+  display: block;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: grid;
+  grid-template-columns: var(--step-columns);
+  column-gap: var(--step-column-gap);
+  row-gap: var(--space-1);
+  align-items: baseline;
+  min-width: 0;
+  /* Every row reaches as far past the columns as the work's tint does,
+     so the dividers and the tint share one left and one right edge. */
+  margin-inline: calc(-1 * var(--work-bleed));
+  padding: var(--space-3) var(--work-bleed);
+  border-top: var(--hairline);
+}
+
+/* A step that sets only a heart rate, a warm-up's or a cool-down's, on a
+   phone: its value on the name line, in the heart rate column, rather
+   than alone on a line of empty cells. */
+.step[data-hr-only] .name {
+  grid-column: 1 / span 2;
+}
+
+.step[data-hr-only] .target[data-empty] {
+  display: none;
+}
+
+.step[data-hr-only] .target:not([data-empty]) {
+  grid-row: 1;
+  grid-column: 3;
+}
+
+/* The swatch, then the role, the amount and the note, wrapping beside it. */
+.name {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.nameText {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-2);
+  min-width: 0;
+  line-height: var(--leading-body);
+}
+
+/* Centred on the first line's text: a body line's height less the swatch's, halved. */
+.mark {
+  --kind-swatch-size: var(--space-3);
+
+  flex: none;
+  width: var(--space-3);
+  height: var(--space-3);
+  margin-top: calc((var(--text-body) * var(--leading-body) - var(--space-3)) / 2);
+  border-radius: calc(var(--space-3) / 5);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+/* Easy running's swatch: the easy kind's tint under a cap of the kind,
+   as the profile above keys it (`SessionProfile.module.css`'s
+   `.swatchEasy`). Hard running keeps the solid square, so the work is the
+   one solid square of the session's kind in the list. */
+.mark.markEasy {
+  box-sizing: border-box;
+  background: var(--kind-tint);
+  border: 1px solid var(--kind);
+  border-top-width: 3px;
+}
+
+.role {
+  font-size: var(--text-body);
+  font-weight: var(--weight-bold);
+}
+
+.amount {
+  font-size: var(--text-body);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: proportional-nums;
+}
+
+.stepNote {
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+}
+
+.stepNote::before {
+  content: '·' / '';
+  margin-right: var(--space-2);
+}
+
+/* The row's targets are the table's cells; their names are the heading
+   row's, kept for a screen reader, which hears "Pace 6:30-7:30/km". */
+.targets {
+  display: contents;
+}
+
+.target {
+  min-width: 0;
+}
+
+.target dt {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.target dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--text-body);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-body);
+  font-variant-numeric: proportional-nums;
+}
+
+/* A pace and a speed never break at their hyphen. */
+.target:not(:last-child) dd {
+  white-space: nowrap;
+}
+
+/* On a phone the column's header names the unit: the cell reads
+   `4:15-4:20`, and keeps `/km` for a screen reader and the text. */
+.unit {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* A dash on a phone would be a cell of missing data: its place is kept,
+   so the columns hold, and nothing is drawn in it. A step that sets no
+   target at all is its name line alone. From 44rem the table draws its
+   dashes. */
+.target[data-empty] dd {
+  visibility: hidden;
+  color: var(--ink-dim);
+  font-weight: var(--weight-regular);
+}
+
+.targets[data-none] .target {
+  display: none;
+}
+
+/* The work: the kind's tint, reaching as far past the table's columns as
+   every row's divider, so its text stays in the columns. Text on it is `--ink`, `--kind-ink` or
+   `--kind-tint-dim`, never `--ink-dim`, its dashes included. */
+.work {
+  row-gap: var(--space-2);
+  margin-inline: calc(-1 * var(--work-bleed));
+  padding: var(--space-4) var(--work-bleed);
+  border-radius: var(--radius-card);
+  border-top-color: transparent;
+}
+
+.work + .step,
+.work:last-child {
+  border-color: transparent;
+}
+
+/* A session that opens on its work, a long run's, keeps air between the
+   column names and the tint. */
+.work:first-child {
+  margin-top: var(--space-2);
+}
+
+/* Two work rows in a row, a long run's easy and steady parts, stay two tints. */
+.work + .work {
+  margin-top: var(--space-1);
+}
+
+.work .role {
+  color: var(--kind-ink);
+}
+
+.work .amount {
+  font-weight: var(--weight-bold);
+}
+
+.work .stepNote {
+  color: var(--kind-tint-dim);
+}
+
+/* The work's figures are the table's largest, Runna's lap card values:
+   with the units in the header, a third of a 360 px phone holds
+   `4:15-4:20` at `--text-stat`. The zone is set smaller, as a unit. */
+.work .target dd {
+  font-size: var(--text-stat);
+  line-height: var(--leading-tight);
+}
+
+.work .zone {
+  font-size: var(--text-small);
+}
+
+.work .target[data-empty] dd {
+  color: var(--kind-tint-dim);
+  font-weight: var(--weight-regular);
+}
+
+/* Wide: the name is the row's first column, on the columns the head's
+   stats stand on, and the targets one size up. */
+@container session (min-width: 44rem) {
+  .stepsHead,
+  .step {
+    grid-template-columns: var(--session-columns);
+    column-gap: var(--session-column-gap);
+  }
+
+  .stepsHead .sub,
+  .name,
+  .step[data-hr-only] .name {
+    grid-column: auto;
+  }
+
+  .step[data-hr-only] .target[data-empty] {
+    display: block;
+  }
+
+  .step[data-hr-only] .target:not([data-empty]) {
+    grid-row: auto;
+    grid-column: auto;
+  }
+
+  /* Without a heading, on the next session's Steps card, the names still
+     start in the first target column. */
+  .columnName:first-of-type {
+    grid-column-start: 2;
+  }
+
+  .columnUnit {
+    display: none;
+  }
+
+  /* The cells carry their units, the work's set smaller, and the table
+     draws its dashes. */
+  .unit {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+  }
+
+  .work .unit {
+    font-size: var(--text-small);
+  }
+
+  .work .zone {
+    font-size: inherit;
+  }
+
+  .target[data-empty] dd {
+    visibility: visible;
+  }
+
+  .targets[data-none] .target {
+    display: block;
+  }
+}
+
+/* ---- Claude's verdict and the day's runs. */
+
+.block {
+  gap: var(--space-1);
+}
+
+.verdict,
+.note {
+  margin: 0;
+  font-size: var(--text-small);
+}
+
+.note {
+  color: var(--ink-dim);
+}
+
+.glyph {
+  font-weight: var(--weight-bold);
+}
+
+.runs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-small);
+}
+
+.run {
+  color: var(--ink);
+  font-variant-numeric: proportional-nums;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.run:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/*
+ * The dialog: the whole screen on a phone, and on a desktop, from
+ * `DESKTOP_LAYOUT_QUERY`'s width, everything right of the rail, its cards
+ * in the page's own column. The browser's own modal box -
+ * centred, inset by 1em, scrolling as a whole - is reset, and the sheet
+ * inside it scrolls under a bar that keeps Close in reach. Its ground is
+ * the page's, as Runna's sheet is grey under white cards.
+ */
+.dialog {
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--page);
+  color: var(--ink);
+  overflow: hidden;
+}
+
+/* A scrim dark enough that the page beside the sheet reads as covered,
+   not as content cut off. */
+.dialog::backdrop {
+  background: color-mix(in srgb, var(--ink) 65%, transparent);
+}
+
+/* On a desktop the sheet covers the whole content column, from the
+   rail's edge to the window's, so no card of the page shows cut beside
+   it; the rail stays under the scrim. */
+@media (min-width: 60rem) {
+  .dialog {
+    width: calc(100% - var(--rail-width));
+    margin-left: auto;
+    box-shadow: var(--shadow-float);
+  }
+}
+
+/* The page's phone gutter: cards 16px from the screen's edge, as the
+   page's own are. On a desktop the page's own gutter and column: the
+   cards stand where the page's cards stand under it. */
+.sheet {
+  --sheet-gutter: var(--space-4);
+
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--sheet-gutter) var(--space-10);
+  padding-inline: max(var(--sheet-gutter), (100% - var(--content-max)) / 2);
+}
+
+@media (min-width: 60rem) {
+  .sheet {
+    --sheet-gutter: var(--space-8);
+  }
+}
+
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: flex-start;
+  margin: 0 calc(-1 * var(--sheet-gutter)) var(--space-1);
+  padding: var(--space-2) var(--sheet-gutter);
+  background: var(--page);
+}
+
+/* Runna's bare back arrow at the sheet's top left, on the ground, with
+   its word: no fill, no shadow. */
+.close {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-2) var(--space-2) 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-body);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+
+/* The ring is the keyboard's alone: Close takes focus as the dialog
+   opens, and a session opened by a pointer or a link draws none. */
+.close:focus-visible {
+  outline: none;
+}
+
+.dialog[data-keyboard] .close:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.closeIcon {
+  width: 1.5rem;
+  height: 1.5rem;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The appendix is on paper only, in the long PDF; on screen the calendar opens each session.
+   The week is on paper only too, in the week PDF. */
+.appendix,
+.week {
+  display: none;
+}
+
+.appendixSession {
+  padding: var(--space-4) 0;
+  border-top: var(--hairline);
+}
+
+.appendixSession:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* Only the long PDF holds it: `printPlan`'s `full` mode. */
+@media print {
+  :global(:root[data-plan-print='full']) .appendix {
+    display: block;
+  }
+
+  /* Only the week PDF holds the week: `printPlan`'s `week` mode. */
+  :global(:root[data-plan-print='week']) .week {
+    display: block;
+  }
+
+  /* On paper a session is as dense as before the redesign, so the week
+     PDF keeps its page count: the stats beside the title, each step on
+     one or two lines, its targets in the phone's three columns. */
+  .detail {
+    gap: var(--space-3);
+  }
+
+  .head {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .stats {
+    grid-auto-columns: max-content;
+    gap: 0 var(--space-5);
+  }
+
+  .statBlock {
+    flex: none;
+    gap: 0;
+  }
+
+  .statNumber {
+    font-size: var(--text-stat);
+  }
+
+  /* Each step on two short lines, a step with no targets on one. */
+  .step {
+    row-gap: 0;
+    padding-block: var(--space-1);
+  }
+
+  .targets[data-none] .target {
+    display: none;
+  }
+
+  .role,
+  .amount,
+  .target dd,
+  .work .target dd {
+    font-size: var(--text-small);
+    line-height: var(--leading-body);
+  }
+
+  .mark {
+    margin-top: calc((var(--text-small) * var(--leading-body) - var(--space-3)) / 2);
+  }
+
+  .work {
+    padding-block: var(--space-1);
+  }
+
+  /* A session flows across pages rather than taking a page of its own:
+     kept whole on a page, each one longer than what was left of the page
+     before it opened on a fresh one and left the rest blank, and the
+     longest split anyway. What may not part is kept together instead: the
+     head with its profile, the step table, and each part's name with what
+     it names (the description's blocks keep themselves whole,
+     `PlanProse.module.css`). Holding the head to the steps as well moved
+     the page's next session whole onto a new page and left half the one
+     before it blank. */
+  .workout {
+    break-inside: avoid;
+  }
+
+  .stepsPart,
+  .table {
+    break-inside: avoid;
+  }
+
+  .sub {
+    break-after: avoid;
+  }
+
+  /* An open detail is the screen's, never the paper's. */
+  .dialog {
+    display: none;
+  }
+}

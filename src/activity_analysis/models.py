@@ -300,6 +300,19 @@ DEVICE_VO2MAX_SCHEMA = pa.schema(
     ]
 )
 
+#: Canonical. The daily resting heart rate, one row per athlete and calendar
+#: day, from a Garmin export's UDS files. ``record_version`` is Garmin's
+#: ``version`` of that day's record; the higher one wins on a re-export.
+RESTING_HR_SCHEMA = pa.schema(
+    [
+        ("athlete_id", pa.string()),
+        ("calendar_date", pa.date32()),
+        ("resting_hr_bpm", pa.float64()),
+        ("record_version", pa.int64()),
+        ("source_file_sha256", pa.string()),
+    ]
+)
+
 #: Derived. Consecutive identical observations collapsed into one interval.
 #: `effective_to` is null for the interval still in force.
 ATHLETE_PROFILE_SCHEMA = pa.schema(
@@ -568,6 +581,101 @@ SPORT_RECLASSIFICATION_SCHEMA = pa.schema(
         ("avg_speed_mps", pa.float64()),
         #: The threshold it was judged against, so a row says what rule made it.
         ("threshold_mps", pa.float64()),
+        ("analysis_version", pa.int32()),
+    ]
+)
+
+#: One run's best near-threshold effort and the heart rate it ended at.
+THRESHOLD_READING_SCHEMA = pa.schema(
+    [
+        ("activity_id", pa.string()),
+        ("start_time_utc", _TS),
+        ("distance_key", pa.string()),
+        ("elapsed_time_s", pa.float64()),
+        ("vdot", pa.float64()),
+        ("final_hr_bpm", pa.float64()),
+        ("hr_coverage", pa.float64()),
+        ("analysis_version", pa.int32()),
+    ]
+)
+
+#: The threshold estimate in force at a run, and its TRIMP with the measured
+#: rest and max it was computed from. See docs/reference/math/threshold-and-load.md.
+RUN_LOAD_SCHEMA = pa.schema(
+    [
+        ("activity_id", pa.string()),
+        ("start_time_utc", _TS),
+        #: Null before the first estimate.
+        ("lthr_bpm", pa.float64()),
+        ("reading_ids", pa.list_(pa.string())),
+        #: Null for a run with no heart rate, or with no rest and max to weigh
+        #: it by, or a rest at or above the max.
+        ("trimp", pa.float64()),
+        #: The run's highest 10 s mean heart rate, null without heart rate.
+        ("peak_hr_10s_bpm", pa.float64()),
+        ("rest_bpm", pa.float64()),
+        ("max_bpm", pa.float64()),
+        #: True when the measured value was missing and the device setting in
+        #: ``athlete_profile`` stood in for it.
+        ("rest_from_setting", pa.bool_()),
+        ("max_from_setting", pa.bool_()),
+        #: The newest measured resting day ``rest_bpm`` rests on: inside the
+        #: run's 28 days, or up to 90 days before it when carried forward.
+        #: Null when the rest is the device setting or there is none.
+        ("rest_measured_through", pa.date32()),
+        ("analysis_version", pa.int32()),
+    ]
+)
+
+#: A run's seconds at each whole heart rate, which is how the zone boundaries
+#: can be changed later without reading the 1 Hz grids again.
+HR_HISTOGRAM_SCHEMA = pa.schema(
+    [
+        ("activity_id", pa.string()),
+        ("hr_bpm", pa.int16()),
+        ("seconds_s", pa.float64()),
+        ("analysis_version", pa.int32()),
+    ]
+)
+
+#: ``ZONE_TIME_SCHEMA`` plus the zone's TRIMP.
+ZONE_TIME_ESTIMATED_SCHEMA = pa.schema(
+    [
+        *[f for f in ZONE_TIME_SCHEMA if f.name != "analysis_version"],
+        ("trimp", pa.float64()),
+        ("analysis_version", pa.int32()),
+    ]
+)
+
+#: One row per local calendar day from the first run to the last: the day's
+#: TRIMP, its 42 day (``ctl``) and 7 day (``atl``) averages, ``form`` as
+#: ``ctl - atl``, and the running distance on the day and over the 7 days
+#: ending it. Distances are metres.
+TRAINING_SERIES_SCHEMA = pa.schema(
+    [
+        ("local_date", pa.date32()),
+        ("trimp", pa.float64()),
+        ("ctl", pa.float64()),
+        ("atl", pa.float64()),
+        ("form", pa.float64()),
+        ("distance_m", pa.float64()),
+        ("distance_7d_m", pa.float64()),
+        ("analysis_version", pa.int32()),
+    ]
+)
+
+#: One row per Monday-started week of the daily series: how many of its days
+#: the series holds, the TRIMP and distance summed and the daily averages
+#: meaned over them.
+TRAINING_LOAD_WEEKLY_SCHEMA = pa.schema(
+    [
+        ("week_start", pa.date32()),
+        ("days", pa.int32()),
+        ("trimp", pa.float64()),
+        ("ctl_mean", pa.float64()),
+        ("atl_mean", pa.float64()),
+        ("form_mean", pa.float64()),
+        ("distance_m", pa.float64()),
         ("analysis_version", pa.int32()),
     ]
 )

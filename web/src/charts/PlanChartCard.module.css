@@ -1,0 +1,70 @@
+/*
+ * The plan's chart cards, laid out inside their `PlanCard`s and side by
+ * side in `PlanGrid` pairs (`views/Plan.tsx`).
+ *
+ * Every chart card has one anatomy, Runna's chart card's: title, note,
+ * stat row, plot, key. Each card spans five rows of its pair's grid and
+ * takes them as a subgrid, and the chart's own parts (`data-part` on each,
+ * the chart's root `display: contents`) are seated on rows of their own:
+ * so across a pair the two stat rows start on one line, the two plots on
+ * the next and the two keys on the last, whatever the notes' lengths.
+ *
+ *   1 title   2 note   3 stats   4 plot, under its status line if any   5 key
+ *
+ * The rows have no gap of their own: the title and note keep the spacing
+ * `PlanCard` gives them, and each part below sets its own space under it.
+ * No row may be left empty, since a subgrid keeps its parent's gutter
+ * around an empty track: so a chart's status line rides in the plot's row
+ * rather than a row of its own.
+ */
+.card {
+  display: grid;
+  grid-row: span 5;
+  grid-template-rows: subgrid;
+  row-gap: 0;
+  align-content: start;
+}
+
+.card > :global([data-chart]) {
+  display: contents;
+}
+
+/* On paper a chart card is never split: its title, stat row, plot and key
+   are one reading. */
+@media print {
+  .card {
+    break-inside: avoid;
+  }
+}
+
+.card :global([data-part='stats']) {
+  grid-row: 3;
+  margin-bottom: var(--space-5);
+}
+
+.card :global([data-part='panel']) {
+  grid-row: 4;
+  align-self: start;
+  margin-bottom: var(--space-4);
+}
+
+.card :global([data-part='key']) {
+  grid-row: 5;
+  align-self: start;
+  margin-top: 0;
+}
+
+/* A chart's span on its title's line, Runna's dim date range under a chart card's title. */
+.span {
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+  white-space: nowrap;
+}
+
+/* On paper the pair stacks (`PlanCard.module.css`), so the card's rows are its own. */
+@media print {
+  .card {
+    grid-row: auto;
+    grid-template-rows: none;
+  }
+}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { localCalendarDay, localCalendarTime } from '../format'
 import {
+  indicesWithin,
   alignSeries,
   axisRange,
   axisScale,
@@ -115,6 +116,16 @@ describe('alignSeries', () => {
 
   it('is empty when no series has a value anywhere, rather than an axis over nothing', () => {
     expect(alignSeries([{ label: 'a', points: [{ t: 1, v: null }] }]).x).toEqual([])
+  })
+})
+
+describe('indicesWithin', () => {
+  it('keeps the indices of values inside the bounds, edges included, and skips missing ones', () => {
+    expect(indicesWithin([39, 40, null, 42, undefined, 45, 46, Number.NaN], 40, 45)).toEqual([1, 3, 5])
+  })
+
+  it('is empty when nothing is inside', () => {
+    expect(indicesWithin([1, 2, 3], 10, 20)).toEqual([])
   })
 })
 

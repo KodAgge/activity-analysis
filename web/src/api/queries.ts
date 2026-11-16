@@ -3,6 +3,10 @@ import type { ActivitySearch } from './activitySearch'
 import { validateActivitySearch } from './activitySearch'
 import { api } from './client'
 import { ApiError } from './errors'
+import type { components } from './schema'
+
+/** The endpoint's largest page, `le=200` on `/api/activities`' `limit`. */
+const EVERY_ACTIVITY_PAGE = 200
 
 /**
  * One TanStack Query options factory per endpoint.
@@ -75,6 +79,56 @@ export const queries = {
         return data
       },
     }),
+
+  plans: () =>
+    queryOptions({
+      queryKey: ['/api/plans'],
+      queryFn: async () => {
+        const { data, error } = await api.GET('/api/plans')
+        if (error) throw error
+        return data
+      },
+    }),
+
+  plan: (goalId: string) =>
+    queryOptions({
+      queryKey: ['/api/plans/{goal_id}', goalId],
+      queryFn: async () => {
+        const { data, error, response } = await api.GET('/api/plans/{goal_id}', {
+          params: { path: { goal_id: goalId } },
+        })
+        // Wrapped with the status like `streams`: a goal id from a stale
+        // link is a 404 the Plan view states, not a failure.
+        if (error) throw new ApiError(error, response.status)
+        return data
+      },
+    }),
+
+  /**
+   * Every activity matching `filters`, not one page of them: the pages are
+   * requested in turn at the endpoint's largest `limit` until `total` is
+   * reached. For a view that needs the whole of a date range, such as the
+   * plan's calendar, where a page cut short would silently drop the runs
+   * past it. `limit` and `offset` are the paging's own, so any the caller
+   * passes are dropped.
+   */
+  everyActivity: (filters: ActivitySearch) => {
+    const { limit: _limit, offset: _offset, ...safe } = validateActivitySearch(filters)
+    return queryOptions({
+      queryKey: ['/api/activities', 'every', safe],
+      queryFn: async () => {
+        const items: components['schemas']['ActivitySummary'][] = []
+        for (;;) {
+          const { data, error } = await api.GET('/api/activities', {
+            params: { query: { ...safe, limit: EVERY_ACTIVITY_PAGE, offset: items.length } },
+          })
+          if (error) throw error
+          items.push(...data.items)
+          if (data.items.length === 0 || items.length >= data.total) return items
+        }
+      },
+    })
+  },
 
   activities: (filters: ActivitySearch) => {
     // `filters` is typed as the already-validated shape, but it is commonly
@@ -171,6 +225,28 @@ export const queries = {
         // `Progression` renders both as a stated absence rather than as the
         // failure a 503 or a network error is. See `api/errors.ts`.
         if (error) throw new ApiError(error, response.status)
+        return data
+      },
+    }),
+
+  threshold: () =>
+    queryOptions({
+      queryKey: ['/api/threshold'],
+      queryFn: async () => {
+        const { data, error } = await api.GET('/api/threshold')
+        if (error) throw error
+        return data
+      },
+    }),
+
+  // `runs: false` leaves the per-run rows out, for a reader of the daily and
+  // weekly series alone: their heart rate histograms are most of the body.
+  trainingLoad: (range: { from?: string; to?: string; runs?: boolean } = {}) =>
+    queryOptions({
+      queryKey: ['/api/training-load', range.from ?? null, range.to ?? null, range.runs ?? true],
+      queryFn: async () => {
+        const { data, error } = await api.GET('/api/training-load', { params: { query: range } })
+        if (error) throw error
         return data
       },
     }),

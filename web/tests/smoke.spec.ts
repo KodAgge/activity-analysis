@@ -5,6 +5,13 @@ import { calendarDate, distance, distanceKeyLabel } from '../src/format'
 import { arcCalls, fillTextCalls, installCanvasSpy } from './canvasSpy'
 
 /**
+ * `/trends` over the whole history. The view's default is the last 12
+ * months counted back from today, and the fixture store's runs are dated,
+ * so a bare `/trends` would draw nothing once they are a year old.
+ */
+const TRENDS_ALL_TIME = '/trends?period=all'
+
+/**
  * The end-to-end smoke suite: one test per view, plus the three tests the
  * task brief singles out because each encodes a fault that measurement
  * caught rather than a test - see `docs/reference/frontend.md`'s "Traps"
@@ -1337,7 +1344,7 @@ test('a trend chart labels a band that contains every mark it draws', async ({ p
   // inside the labelled band. It reads both off the canvas rather than off
   // the source that produced them.
   await installCanvasSpy(page)
-  await page.goto('/trends')
+  await page.goto(TRENDS_ALL_TIME)
 
   const chart = page
     .locator('section')

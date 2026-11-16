@@ -194,6 +194,30 @@ def test_listing_marks_a_gpx_activity_as_utc(tmp_path: Path, reference_gpx: Path
     assert "2026-08-28 18:19 UTC" in listed.stdout
 
 
+def test_listing_shows_an_activity_with_no_distance(tmp_path: Path, reference_fit: Path):
+    """A session with no distance, such as strength training, is listed, not a traceback.
+
+    The device writes no ``total_distance`` for a sport that does not move,
+    so a real store holds such rows and the listing has to say "-" for them.
+    """
+    dump = tmp_path / "dump"
+    dump.mkdir()
+    shutil.copy(reference_fit, dump / reference_fit.name)
+    store = tmp_path / "store"
+    runner.invoke(app, ["ingest", str(dump), "--archive-kind", "strava", "--root", str(store)])
+
+    paths = Paths(root=store)
+    stored = read_activities(paths)
+    stored["distance_m"] = None
+    stored["elapsed_time_s"] = None
+    upsert_activities(paths, stored)
+
+    listed = runner.invoke(app, ["activities", "--root", str(store)])
+    assert listed.exit_code == 0, listed.output
+    line = next(line for line in listed.stdout.splitlines() if "2026-08-28" in line)
+    assert "       - m       - s" in line
+
+
 def test_info_still_reports_a_store_whose_stream_files_are_stale(
     tmp_path: Path, reference_fit: Path
 ):
@@ -717,3 +741,100 @@ def test_ingest_reports_the_vo2max_files_it_read(tmp_path: Path) -> None:
     result = runner.invoke(app, ["ingest", str(export), "--root", str(tmp_path / "store")])
     assert result.exit_code == 0, result.output
     assert "1 Garmin VO2max file(s) read" in result.output
+
+
+def _resting_hr_export(root: Path) -> Path:
+    """A full Garmin export holding only one resting heart rate file."""
+    target = root / "DI_CONNECT" / "DI-Connect-Aggregator" / "UDSFile_a.json"
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        json.dumps([{"calendarDate": "2026-08-01", "version": 1, "restingHeartRate": 48}])
+    )
+    return root
+
+
+def test_ingesting_only_a_resting_heart_rate_recomputes(
+    tmp_path: Path, reference_fit: Path
+) -> None:
+    """Every run's TRIMP is weighed against the resting series, so new rows rebuild it."""
+    folder = tmp_path / "fresh"
+    folder.mkdir()
+    shutil.copy(reference_fit, folder / reference_fit.name)
+    store = Paths(tmp_path / "store")
+    root = ["--root", str(store.root)]
+    assert (
+        runner.invoke(app, ["ingest", str(folder), "--archive-kind", "garmin", *root]).exit_code
+        == 0
+    )
+
+    export = _resting_hr_export(tmp_path / "export")
+    result = runner.invoke(app, ["ingest", str(export), *root])
+    assert result.exit_code == 0, result.output
+    assert "ingested 0" in result.output
+    assert "1 Garmin resting heart rate file(s) read" in result.output
+    assert "recomputing" in result.output
+
+
+def test_ingest_finishes_a_recompute_a_resting_heart_rate_ingest_skipped(
+    tmp_path: Path, reference_fit: Path
+) -> None:
+    """A resting series newer than the derived layer leaves it behind."""
+    from activity_analysis.analysis.pipeline import derived_is_behind
+
+    folder = tmp_path / "fresh"
+    folder.mkdir()
+    shutil.copy(reference_fit, folder / reference_fit.name)
+    store = Paths(tmp_path / "store")
+    root = ["--root", str(store.root)]
+    runner.invoke(app, ["ingest", str(folder), "--archive-kind", "garmin", *root])
+    assert not derived_is_behind(store)
+
+    export = _resting_hr_export(tmp_path / "export")
+    runner.invoke(app, ["ingest", str(export), "--no-recompute", *root])
+    assert derived_is_behind(store)
+
+    again = runner.invoke(app, ["ingest", str(export), *root])
+    assert again.exit_code == 0, again.output
+    assert "resting heart rate file(s) read" not in again.output
+    assert "recomputing" in again.output
+    assert not derived_is_behind(store)
+
+
+def test_a_plain_folder_of_fit_files_ingests_as_garmin(tmp_path: Path, reference_fit: Path):
+    """The fresh-run path of the training plan: new FIT files, no export around them."""
+    folder = tmp_path / "fresh"
+    folder.mkdir()
+    shutil.copy(reference_fit, folder / reference_fit.name)
+    store = tmp_path / "store"
+    command = ["ingest", str(folder), "--archive-kind", "garmin", "--root", str(store)]
+
+    first = runner.invoke(app, command)
+    assert first.exit_code == 0, first.stdout
+    assert "ingested 1" in first.stdout
+
+    paths = Paths(store)
+    stored = read_activities(paths)
+    assert list(stored["source"]) == ["garmin_fit"]
+    metrics = pd.read_parquet(paths.derived / "activity_metrics.parquet")
+    assert list(metrics["activity_id"]) == list(stored["activity_id"])
+
+    second = runner.invoke(app, command)
+    assert second.exit_code == 0, second.stdout
+    assert "ingested 0" in second.stdout
+    assert len(read_activities(paths)) == 1
+
+
+def test_a_zip_of_one_fit_file_ingests_as_garmin(tmp_path: Path, reference_fit: Path):
+    """Garmin Connect's web "Export Original" gives a zip holding one .fit."""
+    zipped = tmp_path / "12345678901.zip"
+    with zipfile.ZipFile(zipped, "w") as archive:
+        archive.write(reference_fit, reference_fit.name)
+    store = tmp_path / "store"
+
+    result = runner.invoke(
+        app, ["ingest", str(zipped), "--archive-kind", "garmin", "--root", str(store)]
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert "ingested 1" in result.stdout
+    assert list(read_activities(Paths(store))["source"]) == ["garmin_fit"]

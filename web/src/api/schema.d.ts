@@ -237,6 +237,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/threshold": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Threshold
+         * @description The threshold in force at the newest run, and its zone edges.
+         */
+        get: operations["threshold_api_threshold_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training-load": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Training Load
+         * @description Daily load and per-run load within inclusive local dates, both optional.
+         */
+        get: operations["training_load_api_training_load_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/predictions": {
         parameters: {
             query?: never;
@@ -350,6 +390,43 @@ export interface paths {
         };
         /** Basemap */
         get: operations["basemap_api_basemap_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Plans */
+        get: operations["plans_api_plans_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plans/{goal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plan
+         * @description 404 for an id that is not a goal id, before any path is built from it.
+         */
+        get: operations["plan_api_plans__goal_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -486,6 +563,8 @@ export interface components {
             source: string;
             /** Pr Distance Keys */
             pr_distance_keys: string[];
+            /** Effort Tags */
+            effort_tags: string[];
         };
         /**
          * ActivityTag
@@ -527,6 +606,25 @@ export interface components {
             rep_pattern: string | null;
             /** Reason */
             reason: string;
+        };
+        /** Assessment */
+        Assessment: {
+            /** Summary */
+            summary: string;
+            /** Estimate S */
+            estimate_s?: number | null;
+            /** Estimate Reasoning */
+            estimate_reasoning: string;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "likely" | "possible" | "unlikely";
+            /**
+             * Citations
+             * @default []
+             */
+            citations: components["schemas"]["Citation"][];
         };
         /**
          * Basemap
@@ -591,6 +689,39 @@ export interface components {
             /** Ineligible Reason */
             ineligible_reason: string | null;
         };
+        /** ChangeEntry */
+        ChangeEntry: {
+            /** Title */
+            title: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Session Ids
+             * @default []
+             */
+            session_ids: string[];
+            /**
+             * Goal Change
+             * @default false
+             */
+            goal_change: boolean;
+        };
+        /** Checkpoint */
+        Checkpoint: {
+            /** Session Id */
+            session_id: string;
+            /** Description */
+            description: string;
+            /** Target Time S */
+            target_time_s?: number | null;
+        };
+        /** Citation */
+        Citation: {
+            /** Label */
+            label: string;
+            /** Pointer */
+            pointer: string;
+        };
         /**
          * Consistency
          * @description Weeks with a run out of weeks considered.
@@ -603,6 +734,17 @@ export interface components {
             weeks_considered: number;
             /** Weeks With A Run */
             weeks_with_a_run: number;
+        };
+        /** Constraints */
+        Constraints: {
+            /** Runs Per Week */
+            runs_per_week: number;
+            /** Run Days */
+            run_days?: ("mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun")[] | null;
+            /** Track Days */
+            track_days?: ("mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun")[] | null;
+            /** Notes */
+            notes?: string | null;
         };
         /**
          * DecouplingOut
@@ -739,6 +881,47 @@ export interface components {
             runs: components["schemas"]["DistributionRun"][];
         };
         /**
+         * ExpectedLoad
+         * @description Fitness, fatigue and form carried from the last measured day through the planned load.
+         *
+         *     ``propose`` computes it; Claude never writes it. See
+         *     docs/reference/math/plan-projection.md.
+         */
+        ExpectedLoad: {
+            start: components["schemas"]["LoadPoint"];
+            race_morning: components["schemas"]["LoadPoint"];
+            /** Weeks */
+            weeks: components["schemas"]["ExpectedLoadWeek"][];
+            /**
+             * Bridged From
+             * @default []
+             */
+            bridged_from: string[];
+        };
+        /**
+         * ExpectedLoadWeek
+         * @description One Monday-started week of the expected series, as ``training_load_weekly`` has it.
+         */
+        ExpectedLoadWeek: {
+            /**
+             * Week Start
+             * Format: date
+             */
+            week_start: string;
+            /** Days */
+            days: number;
+            /** Trimp */
+            trimp: number;
+            /** Ctl Mean */
+            ctl_mean: number;
+            /** Atl Mean */
+            atl_mean: number;
+            /** Form Mean */
+            form_mean: number;
+            start?: components["schemas"]["LoadPoint"] | null;
+            end?: components["schemas"]["LoadPoint"] | null;
+        };
+        /**
          * Fitness
          * @description The VO2max series, both methods, oldest first, and Garmin's own by day.
          */
@@ -777,6 +960,27 @@ export interface components {
             /** Qualifying Segments */
             qualifying_segments: number | null;
         };
+        /** Goal */
+        Goal: {
+            /** Goal Id */
+            goal_id: string;
+            /** Distance M */
+            distance_m: number;
+            /** Target Time S */
+            target_time_s: number;
+            /**
+             * Race Date
+             * Format: date
+             */
+            race_date: string;
+            /**
+             * Surface
+             * @enum {string}
+             */
+            surface: "track" | "road" | "trail" | "other";
+            /** Note */
+            note?: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -808,6 +1012,13 @@ export interface components {
             /** Stale */
             stale: boolean;
         };
+        /** HeartRateRange */
+        HeartRateRange: {
+            /** Low Bpm */
+            low_bpm?: number | null;
+            /** High Bpm */
+            high_bpm: number;
+        };
         /** Lap */
         Lap: {
             /** Lap Index */
@@ -837,6 +1048,89 @@ export interface components {
             descent_m: number | null;
             /** Calories */
             calories: number | null;
+        };
+        /**
+         * LoadDay
+         * @description One local day of training load, zero on a rest day.
+         */
+        LoadDay: {
+            /**
+             * Local Date
+             * Format: date
+             */
+            local_date: string;
+            /** Trimp */
+            trimp: number;
+            /** Ctl */
+            ctl: number;
+            /** Atl */
+            atl: number;
+            /** Form */
+            form: number;
+            /** Distance M */
+            distance_m: number;
+            /** Distance 7D M */
+            distance_7d_m: number;
+        };
+        /**
+         * LoadPoint
+         * @description Fitness, fatigue and form at the end of one local day.
+         */
+        LoadPoint: {
+            /**
+             * Local Date
+             * Format: date
+             */
+            local_date: string;
+            /** Ctl */
+            ctl: number;
+            /** Atl */
+            atl: number;
+            /** Form */
+            form: number;
+        };
+        /**
+         * LoadWeek
+         * @description One Monday-started week of the daily series.
+         */
+        LoadWeek: {
+            /**
+             * Week Start
+             * Format: date
+             */
+            week_start: string;
+            /** Days */
+            days: number;
+            /** Trimp */
+            trimp: number;
+            /** Ctl Mean */
+            ctl_mean: number;
+            /** Atl Mean */
+            atl_mean: number;
+            /** Form Mean */
+            form_mean: number;
+            /** Distance M */
+            distance_m: number;
+        };
+        /** Outcome */
+        Outcome: {
+            /** Session Id */
+            session_id: string;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "done" | "partial" | "missed" | "moved" | "replaced";
+            /**
+             * Activity Ids
+             * @default []
+             */
+            activity_ids: string[];
+            /**
+             * Note
+             * @default
+             */
+            note: string;
         };
         /** Overview */
         Overview: {
@@ -873,6 +1167,98 @@ export interface components {
             distance_m: number;
             /** Moving Time S */
             moving_time_s: number;
+        };
+        /**
+         * PlanDetail
+         * @description One goal with every version it has had, oldest first.
+         */
+        PlanDetail: {
+            /** Goal Id */
+            goal_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "proposed" | "active" | "archived" | "closed";
+            /** Versions */
+            versions: components["schemas"]["PlanVersionEntry"][];
+        };
+        /**
+         * PlanSummary
+         * @description One goal in the list, its figures from the version that speaks for it.
+         *
+         *     That is the pending version, else the accepted one, else the newest: a
+         *     revision may change the goal, and a rejected or withdrawn one never
+         *     described it.
+         */
+        PlanSummary: {
+            /** Goal Id */
+            goal_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "proposed" | "active" | "archived" | "closed";
+            /** Distance M */
+            distance_m: number;
+            /** Target Time S */
+            target_time_s: number;
+            /**
+             * Race Date
+             * Format: date
+             */
+            race_date: string;
+            /** Accepted Version */
+            accepted_version: number | null;
+            /** Pending Version */
+            pending_version: number | null;
+        };
+        /**
+         * PlanVersion
+         * @description The stored version: a draft plus what the CLI stamped on it.
+         */
+        PlanVersion: {
+            goal: components["schemas"]["Goal"];
+            constraints: components["schemas"]["Constraints"];
+            assessment: components["schemas"]["Assessment"];
+            /** Weeks */
+            weeks: components["schemas"]["Week"][];
+            /**
+             * Changes
+             * @default []
+             */
+            changes: components["schemas"]["ChangeEntry"][];
+            /**
+             * Outcomes
+             * @default []
+             */
+            outcomes: components["schemas"]["Outcome"][];
+            /**
+             * Checkpoints
+             * @default []
+             */
+            checkpoints: components["schemas"]["Checkpoint"][];
+            result?: components["schemas"]["RaceResult"] | null;
+            provenance: components["schemas"]["Provenance"];
+        };
+        /** PlanVersionEntry */
+        PlanVersionEntry: {
+            /** Number */
+            number: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "proposed" | "accepted" | "superseded" | "rejected" | "withdrawn";
+            plan: components["schemas"]["PlanVersion"];
+        };
+        /**
+         * Plans
+         * @description Every goal, newest first. Empty when no plan was ever proposed.
+         */
+        Plans: {
+            /** Items */
+            items: components["schemas"]["PlanSummary"][];
         };
         /**
          * Prediction
@@ -951,6 +1337,33 @@ export interface components {
             /** Contains Jump */
             contains_jump: boolean | null;
         };
+        /** Provenance */
+        Provenance: {
+            /** Number */
+            number: number;
+            /** Revises */
+            revises: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Data Through */
+            data_through: string | null;
+            /** Snapshot */
+            snapshot: components["schemas"]["SnapshotPrediction"][];
+            /** Lthr Bpm */
+            lthr_bpm?: number | null;
+            /** Zone Boundaries Bpm */
+            zone_boundaries_bpm?: number[] | null;
+            /** Trimp Per Minute */
+            trimp_per_minute?: (number | null)[] | null;
+            /** Target Vdot */
+            target_vdot?: number | null;
+            /** Estimate Vdot */
+            estimate_vdot?: number | null;
+            expected_load?: components["schemas"]["ExpectedLoad"] | null;
+        };
         /**
          * RaceModel
          * @description One model's prediction at one distance.
@@ -966,6 +1379,18 @@ export interface components {
             high_s: number | null;
             /** Source */
             source: string;
+        };
+        /** RaceResult */
+        RaceResult: {
+            /** Time S */
+            time_s: number | null;
+            /** Achieved */
+            achieved: boolean;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
         };
         /**
          * Reclassification
@@ -1126,12 +1551,114 @@ export interface components {
             /** Record Utc Offset S */
             record_utc_offset_s: number | null;
         };
+        /**
+         * RunLoad
+         * @description One run's load, estimated zone time and heart rate histogram.
+         */
+        RunLoad: {
+            /** Activity Id */
+            activity_id: string;
+            /**
+             * Local Date
+             * Format: date
+             */
+            local_date: string;
+            /** Lthr Bpm */
+            lthr_bpm: number | null;
+            /** Trimp */
+            trimp: number | null;
+            /** Rest Bpm */
+            rest_bpm: number | null;
+            /** Max Bpm */
+            max_bpm: number | null;
+            /** Rest From Setting */
+            rest_from_setting: boolean;
+            /** Max From Setting */
+            max_from_setting: boolean;
+            /** Zone Seconds */
+            zone_seconds: number[];
+            /** Hr Bpm */
+            hr_bpm: number[];
+            /** Hr Seconds */
+            hr_seconds: number[];
+        };
+        /** Session */
+        Session: {
+            /** Id */
+            id: string;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "easy" | "long" | "intervals" | "tempo" | "threshold" | "strides" | "time_trial" | "race" | "rest" | "cross_training";
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+            /** Planned Distance M */
+            planned_distance_m?: number | null;
+            /** Planned Duration S */
+            planned_duration_s?: number | null;
+            /**
+             * Steps
+             * @default []
+             */
+            steps: components["schemas"]["Step"][];
+        };
+        /** SnapshotPrediction */
+        SnapshotPrediction: {
+            /** Distance Key */
+            distance_key: string;
+            /** Distance M */
+            distance_m: number;
+            /** Model */
+            model: string;
+            /** Predicted Time S */
+            predicted_time_s: number;
+            /** Low S */
+            low_s: number | null;
+            /** High S */
+            high_s: number | null;
+        };
+        /** SpeedRange */
+        SpeedRange: {
+            /** Low Mps */
+            low_mps: number;
+            /** High Mps */
+            high_mps: number;
+        };
         /** SportCount */
         SportCount: {
             /** Sport */
             sport: string | null;
             /** Count */
             count: number;
+        };
+        /** Step */
+        Step: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "warmup" | "work" | "recovery" | "cooldown" | "strides";
+            /**
+             * Repeat
+             * @default 1
+             */
+            repeat: number;
+            /** Distance M */
+            distance_m?: number | null;
+            /** Duration S */
+            duration_s?: number | null;
+            speed?: components["schemas"]["SpeedRange"] | null;
+            heart_rate?: components["schemas"]["HeartRateRange"] | null;
+            /** Note */
+            note?: string | null;
         };
         /** Streak */
         Streak: {
@@ -1359,6 +1886,37 @@ export interface components {
             north: number;
         };
         /**
+         * Threshold
+         * @description The estimated lactate threshold heart rate in force at the newest run.
+         *
+         *     ``current`` is null until three readings exist.
+         */
+        Threshold: {
+            current: components["schemas"]["ThresholdNow"] | null;
+        };
+        /**
+         * ThresholdNow
+         * @description The threshold in force at the newest run and the zones it implies.
+         */
+        ThresholdNow: {
+            /** Lthr Bpm */
+            lthr_bpm: number;
+            /** Boundaries Bpm */
+            boundaries_bpm: number[];
+        };
+        /**
+         * TrainingLoad
+         * @description Daily and weekly load and the runs behind it, within the requested local dates.
+         */
+        TrainingLoad: {
+            /** Days */
+            days: components["schemas"]["LoadDay"][];
+            /** Weeks */
+            weeks: components["schemas"]["LoadWeek"][];
+            /** Runs */
+            runs: components["schemas"]["RunLoad"][];
+        };
+        /**
          * TrendPoint
          * @description One activity's normalised efficiency: what heart rate and cadence would
          *     have been at each reference pace, rather than what they averaged at the
@@ -1442,6 +2000,35 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** Week */
+        Week: {
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /** Phase */
+            phase: string;
+            /** Focus */
+            focus: string;
+            /** Planned Distance M */
+            planned_distance_m: number;
+            /** Detailed */
+            detailed: boolean;
+            /**
+             * Sessions
+             * @default []
+             */
+            sessions: components["schemas"]["Session"][];
+            /** Planned Zone Minutes */
+            planned_zone_minutes?: number[] | null;
+            /** Expected Vdot */
+            expected_vdot?: number | null;
+            /** Expected Garmin Vo2Max */
+            expected_garmin_vo2max?: number | null;
+            /** Load Note */
+            load_note?: string | null;
         };
         /**
          * ZoneBucket
@@ -1742,6 +2329,62 @@ export interface operations {
             };
         };
     };
+    threshold_api_threshold_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Threshold"];
+                };
+            };
+        };
+    };
+    training_load_api_training_load_get: {
+        parameters: {
+            query?: {
+                /** @description Inclusive lower bound, a local calendar date. */
+                from?: string | null;
+                /** @description Inclusive upper bound, a local calendar date. */
+                to?: string | null;
+                /** @description False leaves `runs` empty, for a client that reads only the daily and weekly series: the runs' heart rate histograms are most of the body. */
+                runs?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrainingLoad"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     predictions_api_predictions_get: {
         parameters: {
             query?: never;
@@ -1880,6 +2523,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Basemap"];
+                };
+            };
+        };
+    };
+    plans_api_plans_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plans"];
+                };
+            };
+        };
+    };
+    plan_api_plans__goal_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

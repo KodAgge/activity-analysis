@@ -52,3 +52,30 @@ if (typeof window.matchMedia !== 'function') {
 // burying any real warning among them. Nothing here scrolls, so a no-op is
 // the whole behaviour a test needs.
 window.scrollTo = () => {}
+
+// jsdom has `HTMLDialogElement` but none of its behaviour: no `showModal`,
+// no `close`, and no Escape. The Plan view's session detail is a native
+// modal `<dialog>`, so this gives it the part a test can observe, the way
+// Chromium behaves: `showModal` sets `open`, `close` clears it and fires
+// `close`, and Escape inside an open modal fires a cancelable `cancel` and
+// then closes it. Focus trapping and the top layer stay the browser's,
+// covered by `tests/plan.spec.ts`.
+if (typeof HTMLDialogElement.prototype.showModal !== 'function') {
+  const onEscape = function (this: HTMLDialogElement, event: KeyboardEvent): void {
+    if (event.key !== 'Escape' || !this.open) return
+    const cancel = new Event('cancel', { cancelable: true })
+    if (this.dispatchEvent(cancel)) this.close()
+  }
+  HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement): void {
+    if (this.open) return
+    this.setAttribute('open', '')
+    this.addEventListener('keydown', onEscape)
+  }
+  HTMLDialogElement.prototype.close = function (this: HTMLDialogElement, returnValue?: string): void {
+    if (!this.open) return
+    if (returnValue !== undefined) this.returnValue = returnValue
+    this.removeAttribute('open')
+    this.removeEventListener('keydown', onEscape)
+    this.dispatchEvent(new Event('close'))
+  }
+}

@@ -9,22 +9,23 @@ import styles from './TabBar.module.css'
  * The application's one navigation control: a bottom tab bar on a phone, a
  * left rail on a desktop.
  *
- * Seven destinations in the router's own order, which is also the order
+ * Eight destinations in the router's own order, which is also the order
  * they are read in - what training has looked like lately, then the runs
  * behind it, then the bests those runs produced, then whether any of it is
  * improving, then how the runs spread over one variable at a time, then
- * the ground the loops among them have claimed.
+ * the ground the loops among them have claimed, then the plan for the
+ * runs still to come.
  *
  * **A phone shows four and a More tab.** Six labels already needed the
  * bar's side padding cut to 8px and the label set at 10px to fit a 360px
  * phone, with the two longest columns widened past their share (see
  * `TabBar.module.css`); a seventh has no room left at any size a label can
  * still be read at. The platforms' own answer past five destinations is
- * an overflow - iOS's More tab - so the last three, the analysis views and
- * Territory, sit behind one, in the same order. The rail on a desktop has
- * room for all seven and shows them all, with no More.
+ * an overflow - iOS's More tab - so the last four, the analysis views,
+ * Territory and Plan, sit behind one, in the same order. The rail on a
+ * desktop has room for all eight and shows them all, with no More.
  *
- * The three are one set of links either way, not a copy per layout: on a
+ * The four are one set of links either way, not a copy per layout: on a
  * phone their container is a sheet over the bar, shown while More is open
  * and `display: none` otherwise, and on a desktop it is `display:
  * contents`, so its links are the rail's own rows. The DOM order, and so
@@ -132,6 +133,20 @@ function TerritoryIcon() {
   )
 }
 
+/**
+ * A calendar page with a tick on it: Plan is the weeks ahead, each day
+ * with a session to do, which is what sets it apart from the charts.
+ */
+function PlanIcon() {
+  return (
+    <svg {...iconProps()}>
+      <rect x="3.8" y="5" width="16.4" height="15" rx="1.8" />
+      <path d="M3.8 9.6h16.4M8.2 3v4M15.8 3v4" />
+      <path d="m9 14.8 2 2 4-4.2" />
+    </svg>
+  )
+}
+
 /** Three dots: more destinations than the phone bar has room for. */
 function MoreIcon() {
   return (
@@ -142,7 +157,7 @@ function MoreIcon() {
 }
 
 /** The paths the More tab holds on a phone, so it can be marked current on any of them. */
-const OVERFLOW_PATHS = ['/progression', '/distributions', '/territory']
+const OVERFLOW_PATHS = ['/progression', '/distributions', '/territory', '/plan']
 
 interface TabProps {
   icon: ReactNode
@@ -266,6 +281,11 @@ export function TabBar() {
           activeProps={{ className: styles.tabActive }}
         >
           <TabContent icon={<TerritoryIcon />} label="Territory" />
+        </Link>
+        {/* A goal's own page, `/plan/$goalId`, is under `/plan`, so the
+            default fuzzy match marks this tab current there too. */}
+        <Link to="/plan" className={styles.tab} activeProps={{ className: styles.tabActive }}>
+          <TabContent icon={<PlanIcon />} label="Plan" />
         </Link>
       </div>
       <button

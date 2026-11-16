@@ -208,3 +208,16 @@
     margin-inline: auto;
   }
 }
+
+/* On paper the content takes the page: no rail margin, no room for the bar. */
+@media print {
+  .main {
+    margin-left: 0;
+    padding: 0;
+  }
+
+  .content,
+  .store {
+    max-width: none;
+  }
+}

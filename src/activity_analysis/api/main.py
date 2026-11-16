@@ -25,11 +25,13 @@ from activity_analysis.api.routers import (
     fitness,
     health,
     overview,
+    plans,
     predictions,
     progression,
     records,
     routes,
     territory,
+    training,
     trends,
 )
 from activity_analysis.config import Paths, default_paths
@@ -77,11 +79,13 @@ def create_app(paths: Paths | None = None, frontend: Path | None = None) -> Fast
     app.include_router(trends.router)
     app.include_router(distributions.router)
     app.include_router(fitness.router)
+    app.include_router(training.router)
     app.include_router(predictions.router)
     app.include_router(progression.router)
     app.include_router(routes.router)
     app.include_router(territory.router)
     app.include_router(basemap.router)
+    app.include_router(plans.router)
 
     @app.exception_handler(duckdb.Error)
     async def stale_store(request: Request, exc: Exception) -> JSONResponse:

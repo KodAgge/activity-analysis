@@ -1,13 +1,16 @@
 import { Outlet, createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
 import { activitySearchRedirectTarget, validateActivitySearch } from './api/activitySearch'
 import { distributionSearchRedirectTarget, validateDistributionSearch } from './api/distributionSearch'
+import { planSearchRedirectTarget, validatePlanSearch } from './api/planSearch'
 import { progressionSearchRedirectTarget, validateProgressionSearch } from './api/progressionSearch'
 import { territorySearchRedirectTarget, validateTerritorySearch } from './api/territorySearch'
+import { trendsSearchRedirectTarget, validateTrendsSearch } from './api/trendsSearch'
 import { AppShell } from './components/AppShell'
 import { ActivityDetail } from './views/ActivityDetail'
 import { Activities } from './views/Activities'
 import { Distributions } from './views/Distributions'
 import { Overview } from './views/Overview'
+import { Plan } from './views/Plan'
 import { Progression } from './views/Progression'
 import { Records } from './views/Records'
 import { RouteDetail } from './views/RouteDetail'
@@ -104,13 +107,24 @@ const routeDetailRoute = createRoute({
 })
 
 /**
- * Literal paths declared after `/activities/$activityId`, exactly as
- * `/records` is and for the same reason: neither can be read as an
- * activity id.
+ * The trend charts, over a period the reader picks. This and `/progression`
+ * below are literal paths declared after `/activities/$activityId`, exactly
+ * as `/records` is and for the same reason: neither can be read as an
+ * activity id. Absent is the last 12 months,
+ * so the redirect only strips an unknown key or a malformed range, and it
+ * carries the hash across because the activity page links to
+ * `/trends#decoupling`.
  */
 const trendsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/trends',
+  validateSearch: validateTrendsSearch,
+  beforeLoad: ({ location }) => {
+    const target = trendsSearchRedirectTarget(location.search)
+    if (target !== null) {
+      throw redirect({ to: '/trends', search: target, hash: location.hash, replace: true })
+    }
+  },
   component: Trends,
 })
 
@@ -170,6 +184,38 @@ const territoryRoute = createRoute({
   component: Territory,
 })
 
+/**
+ * The training plan: `/plan` opens on the goal that most needs looking at
+ * and `/plan/$goalId` on one goal, both on the same view. `version` is
+ * optional, as Territory's region is, so the redirect only strips an
+ * unknown key or a malformed number.
+ */
+const planRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/plan',
+  validateSearch: validatePlanSearch,
+  beforeLoad: ({ location }) => {
+    const target = planSearchRedirectTarget(location.search)
+    if (target !== null) {
+      throw redirect({ to: '/plan', search: target, replace: true })
+    }
+  },
+  component: Plan,
+})
+
+const planGoalRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/plan/$goalId',
+  validateSearch: validatePlanSearch,
+  beforeLoad: ({ location, params }) => {
+    const target = planSearchRedirectTarget(location.search)
+    if (target !== null) {
+      throw redirect({ to: '/plan/$goalId', params, search: target, replace: true })
+    }
+  },
+  component: Plan,
+})
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   activitiesRoute,
@@ -180,6 +226,8 @@ const routeTree = rootRoute.addChildren([
   progressionRoute,
   distributionsRoute,
   territoryRoute,
+  planRoute,
+  planGoalRoute,
 ])
 
 export const router = createRouter({ routeTree })

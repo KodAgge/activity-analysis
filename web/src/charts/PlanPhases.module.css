@@ -1,0 +1,250 @@
+/*
+ * The phase strip inside the plan's header card, three lines: the phase
+ * names, Runna's week dashes in groups by phase with the marks on them,
+ * and each mark's label under it.
+ *
+ * `--phase-gap` is the air between two phases, two steps of the 4px gap
+ * between two weeks of one phase, so the groups read as groups while the
+ * row still reads as one row of weeks. `--week-gap` is that gap between
+ * two weeks, handed to the dashes. A group's flex basis is its own gaps
+ * between weeks and it grows by its weeks, so every week is drawn the
+ * same width whatever its phase's length. `PlanPhases.tsx` places each
+ * mark with both, so change them here only.
+ */
+.panel {
+  --phase-gap: var(--space-2);
+  --week-gap: var(--space-1);
+  --strip-dash: calc(var(--space-1) * 1.5);
+  /* A checkpoint's diamond: its box, drawn a quarter turn, is this times
+     the square root of two across. */
+  --mark-size: 9px;
+  /* The race's diamond closing the row, a step larger than a checkpoint's. */
+  --finish-size: 14px;
+  --name-line: calc(var(--text-label) * var(--leading-tight));
+  --label-line: calc(var(--text-label) * var(--leading-body));
+
+  width: 100%;
+  min-width: 0;
+}
+
+.strip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* The weeks, then the race closing the row on the dashes' line. */
+.row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--phase-gap);
+}
+
+/* The weeks, phase by phase, the names over them and the marks on them. */
+.track {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  align-items: flex-end;
+  gap: var(--phase-gap);
+  min-width: 0;
+  padding-top: calc(var(--name-line) + var(--space-2));
+}
+
+.phase,
+.spacer {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+/* A group of weeks: its name, when it has one, hangs over it from the
+   track's name line, free to run on past the group (`placeNames`). */
+.phase {
+  position: relative;
+}
+
+/* A phase's name: ink, so the row reads from its names even before any
+   week is done. Hidden, its box kept, where it does not fit. */
+.phaseName {
+  position: absolute;
+  bottom: calc(100% + var(--space-2));
+  left: calc(-1 * var(--snap, 0px));
+  color: var(--ink);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  white-space: nowrap;
+}
+
+.phaseName[data-anchor='end'] {
+  right: 0;
+  left: auto;
+}
+
+.phaseName[data-cut] {
+  visibility: hidden;
+}
+
+/* No name fits: no line kept for them. */
+.track[data-unnamed] {
+  padding-top: 0;
+}
+
+/* A long plan: the phases close up to the gap between weeks. Set on the
+   panel, which every mark's place reads it from. */
+.dense {
+  --phase-gap: var(--space-1);
+}
+
+/* The phase today is in: its name bold, as its current dash stands out. */
+.currentPhase .phaseName {
+  font-weight: var(--weight-bold);
+}
+
+/* Two classes, to outrank `ProgressDashes`' own default. */
+.strip .dashes {
+  --dash-height: var(--strip-dash);
+  --dash-gap: var(--week-gap);
+
+  width: 100%;
+}
+
+/* Today: an ink tick through its week's dash, a step taller than the dash. */
+.today {
+  position: absolute;
+  bottom: calc(var(--strip-dash) / 2 - 7px);
+  width: 2px;
+  height: 14px;
+  margin-left: -1px;
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+}
+
+/* Today before the plan begins: the tick at the row's start, its left
+   edge on the first dash's, as the card's text is. */
+.todayBefore {
+  left: 0;
+  margin-left: 0;
+}
+
+/* A checkpoint: a hollow diamond on its day's dash, knocked out of it. */
+.diamond {
+  position: absolute;
+  bottom: calc(var(--strip-dash) / 2 - var(--mark-size) / 2);
+  box-sizing: border-box;
+  width: var(--mark-size);
+  height: var(--mark-size);
+  border: 1.5px solid var(--ink);
+  background: var(--plan-surface, var(--page));
+  transform: translateX(-50%) rotate(45deg);
+}
+
+/* The race: a filled diamond closing the row, centred on the dashes' line. */
+.finish {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--finish-size);
+  height: var(--finish-size);
+  margin-bottom: calc(var(--strip-dash) / 2 - var(--finish-size) / 2);
+}
+
+.finish::before {
+  width: 70.7%;
+  height: 70.7%;
+  background: var(--ink);
+  content: '';
+  transform: rotate(45deg);
+}
+
+/* The labels: as wide as the track, so a mark's place is the same length
+   here as over it; the race's hangs past the end, under the race. As
+   tall as the lines `placeLabels` puts them on. */
+.labels {
+  position: relative;
+  height: calc(var(--lanes, 1) * var(--label-line));
+  margin-right: calc(var(--finish-size) + var(--phase-gap));
+  color: var(--ink);
+  font-size: var(--text-label);
+  line-height: var(--leading-body);
+  /* Proportional: tabular figures space out the colon, `13 : 05`. */
+  font-variant-numeric: proportional-nums;
+}
+
+/* A zero-width point at a mark, on its line; the label hangs off it. */
+.anchor {
+  --inset: calc(var(--mark-size) * 0.71);
+
+  position: absolute;
+  top: calc(var(--lane, 0) * var(--label-line));
+  width: 0;
+}
+
+.tickAnchor {
+  --inset: 1px;
+}
+
+.beforeAnchor {
+  --inset: 0px;
+
+  left: 0;
+}
+
+/* Under the race's diamond at the row's end, reading leftward from it. */
+.raceAnchor {
+  --inset: 0px;
+
+  left: calc(100% + var(--phase-gap) + var(--finish-size));
+}
+
+.label {
+  position: absolute;
+  top: 0;
+  left: calc(-1 * var(--inset));
+  white-space: nowrap;
+}
+
+.anchor[data-anchor='end'] .label {
+  right: calc(-1 * var(--inset));
+  left: auto;
+}
+
+.raceLabel {
+  font-weight: var(--weight-bold);
+}
+
+.labelDate {
+  color: var(--ink-dim);
+}
+
+/* A desktop's plan card is twice a phone's width: the dashes a step
+   thicker and the names and labels a step larger, so the row is not a
+   hairline across it. */
+@media (min-width: 60rem) {
+  .panel {
+    --strip-dash: var(--space-2);
+    --mark-size: 10px;
+    --finish-size: 16px;
+    --name-line: calc(var(--text-small) * var(--leading-tight));
+    --label-line: calc(var(--text-small) * var(--leading-body));
+  }
+
+  .phaseName,
+  .labels {
+    font-size: var(--text-small);
+  }
+
+  .today {
+    bottom: calc(var(--strip-dash) / 2 - 8px);
+    height: 16px;
+  }
+}
+
+@media print {
+  .diamond,
+  .finish::before,
+  .today {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}

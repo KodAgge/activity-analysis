@@ -8,6 +8,7 @@ import pytest
 from activity_analysis.config import Paths
 from activity_analysis.ingest.discover import sha256_file
 from activity_analysis.ingest.garmin_metrics import METRICS_DIR
+from activity_analysis.ingest.garmin_wellness import AGGREGATOR_DIR
 from activity_analysis.ingest.ledger import append_ledger, load_ledger
 from activity_analysis.ingest.pipeline import ingest
 from activity_analysis.models import SOURCE_GARMIN_FIT, SOURCE_GPX, SOURCE_STRAVA_FIT
@@ -16,6 +17,7 @@ from activity_analysis.store.writer import (
     read_device_vo2max,
     read_laps,
     read_profile_observations,
+    read_resting_hr,
     read_streams,
 )
 
@@ -410,6 +412,42 @@ def test_a_broken_vo2max_file_is_reported_and_retried(tmp_path: Path) -> None:
     second = ingest(paths, export, archive_kind="garmin")
     assert second.vo2max_files == 0
     assert [Path(path).name for path, _ in second.errors] == ["MetricsMaxMetData_b.json"]
+
+
+def _uds_export(root: Path) -> Path:
+    target = root / AGGREGATOR_DIR / "UDSFile_a.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {"calendarDate": "2025-01-01", "version": 1, "restingHeartRate": 50},
+        {"calendarDate": "2025-01-02", "version": 1, "restingHeartRate": 51},
+        {"calendarDate": "2025-01-03", "version": 1, "restingHeartRate": None},
+    ]
+    target.write_text(json.dumps(rows))
+    return root
+
+
+def test_a_garmin_export_writes_its_resting_heart_rate(tmp_path: Path) -> None:
+    export = _uds_export(tmp_path / "export")
+    paths = Paths(root=tmp_path / "store")
+    result = ingest(paths, export, archive_kind="garmin")
+    assert result.resting_hr_files == 1
+    assert not result.errors
+    stored = read_resting_hr(paths)
+    assert stored["resting_hr_bpm"].tolist() == [50.0, 51.0]
+    ledger = load_ledger(paths)
+    assert ledger.loc[ledger["status"] == "resting_hr", "source"].tolist() == ["garmin_export"]
+    again = ingest(paths, export, archive_kind="garmin")
+    assert again.resting_hr_files == 0
+    assert read_resting_hr(paths)["resting_hr_bpm"].tolist() == [50.0, 51.0]
+
+
+def test_a_strava_export_writes_no_resting_heart_rate(tmp_path: Path) -> None:
+    export = _uds_export(tmp_path / "export")
+    paths = Paths(root=tmp_path / "store")
+    result = ingest(paths, export, archive_kind="strava")
+    assert result.resting_hr_files == 0
+    assert not result.errors
+    assert read_resting_hr(paths).empty
 
 
 def test_territory_parts_is_the_last_table_recompute_writes(ingested_store: Paths):

@@ -1,0 +1,138 @@
+/*
+ * The plan page's card: a white surface raised off the grey ground, which
+ * every block of the page sits on. One rule set, so the page reads as one
+ * system; a block changes what is inside its card, never the card.
+ *
+ * Measured with Pillow on the Runna crops (the gauntlet's `ref/`). Runna's
+ * shots are downscaled, so each is converted at its own scale, fixed by
+ * Runna's 16 pt screen gutter: plan-home-flat 23.5 px / 16 = 1.47 px/pt,
+ * today 1.15, pace-insights 1.42, plan-home-light 1.01.
+ *
+ *   Measurement                       device px          pt     here
+ *   ----------------------------------------------------------------------
+ *   inner padding, left/right         22-24 (flat)       15-16  16px
+ *                                     18 (today)         16
+ *   ink top below the card's edge     26 (flat), 21      17-18  16px + leading
+ *   ink bottom above the card's edge  31 (flat), 23      20-21  16px + leading
+ *   corner radius, fitted to the      22 (flat)          15     16px
+ *   antialiased inset of each row     21 (pace), 15      15, 13
+ *   card title cap, "Pace on point"   16 (chart card)    11.3   12.0 (17px)
+ *   "Workout Insights"                16 (prose card)    10.8
+ *   note cap, "9 Jan - 10 Feb"        13 (pace)          9.2    9.8 (14px)
+ *
+ * The edge is a soft shadow and no hairline: across a card's edge the
+ * luminance falls smoothly into the ground, darkest at the edge, with no
+ * one-pixel line anywhere (plan-home-flat, plan-home-light, today). Its
+ * darkening of the page, measured on the green channel, is 4% above the
+ * card, 6.5% at the sides and 7% below, gone 12 device px out at the top
+ * and the sides (8 pt) and longer below. A shadow offset 2px down with a
+ * 12px blur (sigma 6px) of `--shadow`, ink at 12%, gives 4.4%, 6% and 7.6%
+ * at the three edges and fades over the same 8 px: the token's own colour
+ * in the measured geometry.
+ *
+ * The radius is `--space-4` because Runna's radius is its padding (15 pt
+ * each on plan-home-flat), and 16px is that on the 4px grid; `--radius-card`
+ * (10px) is two thirds of what Runna draws.
+ */
+.card {
+  --plan-card-pad: var(--space-4);
+  --plan-card-radius: var(--space-4);
+  --plan-card-shadow: 0 2px 12px var(--shadow);
+
+  /* The ground a mark inside the card knocks out against: a label's halo,
+     a hollow point. `Plan.module.css` sets it to `--page` for the page. */
+  --plan-surface: var(--raised);
+
+  min-width: 0;
+  padding: var(--plan-card-pad);
+  border-radius: var(--plan-card-radius);
+  background: var(--raised);
+  box-shadow: var(--plan-card-shadow);
+}
+
+/* A desktop card is three times as wide, so it gets a step more air; the
+   radius stays, since a larger one turns a wide card into a pill. */
+@media (min-width: 60rem) {
+  .card {
+    --plan-card-pad: var(--space-6);
+  }
+}
+
+.card > :last-child {
+  margin-bottom: 0;
+}
+
+/* `h2` carries `--text-heading` and `--weight-bold` from `theme/global.css`:
+   17px, a 12.0px cap against Runna's 10.8-11.3 pt card titles, the
+   nearest rung of the scale. */
+.title {
+  margin: 0 0 var(--space-4);
+}
+
+/* The title and its `aside` on one baseline at either end of the line,
+   wrapping under the title when the line is too narrow for both. */
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-4);
+  margin: 0 0 var(--space-4);
+}
+
+.head > .title {
+  margin: 0;
+}
+
+/* Bound to the title above it: 4px under the title, 16px over the content. */
+.title + .note,
+.head + .note {
+  margin-top: calc(var(--space-4) * -1 + var(--space-1));
+}
+
+/* `--text-small`: Runna's note is 0.77-0.81 of its card title's size
+   (pace-insights, pace-chart), and 14px over 17px is 0.82 where
+   `--text-label` is 0.71. `--ink-dim` on `--raised` is 5.13:1. */
+.note {
+  margin: 0 0 var(--space-4);
+  color: var(--ink-dim);
+  font-size: var(--text-small);
+  line-height: var(--leading-body);
+}
+
+/*
+ * Cards side by side. Every card is full width by default; a block that
+ * wants two or three across wraps them in `PlanGrid`, whose columns are at
+ * least `--plan-row-min` wide and share what is left, so a phone gets one
+ * column and a desktop as many as fit.
+ */
+.grid {
+  --plan-row-min: 20rem;
+
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--plan-row-min)), 1fr));
+  gap: var(--plan-gap, var(--space-4));
+  min-width: 0;
+}
+
+/* On paper a card is a section, not a box. A long one, the calendar or the
+   session details, runs over a page break, and a frame cut open at the
+   page's edge reads as broken; so the cards stand apart by a rule over each
+   and the page's rhythm, and the tints inside them carry the colour. No
+   shadow, which a printer renders as a grey smear. Cards side by side
+   stack, since a chart measured at the screen's width only shrinks. */
+@media print {
+  .card {
+    padding: var(--space-3) 0 0;
+    border: 0;
+    border-top: var(--hairline);
+    border-radius: 0;
+    box-shadow: none;
+    background: none;
+  }
+
+  .grid {
+    display: flex;
+    flex-direction: column;
+  }
+}

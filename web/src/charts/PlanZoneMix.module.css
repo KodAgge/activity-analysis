@@ -1,0 +1,132 @@
+/*
+ * The heart-rate mix. Sized as `PlanVolume.module.css` sizes its own: the
+ * column's width, and the height the measured viewBox gives it.
+ */
+.chart {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* `PlanVolume.module.css`'s `.note`. */
+.note {
+  margin: 0;
+  color: var(--ink-dim);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.panel {
+  width: 100%;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* Runna's grid: faint rules the marks stand in front of. */
+.rule {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.axisLabel {
+  fill: var(--ink-dim);
+  font-family: inherit;
+  font-size: var(--text-label);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Each band's two colours, set on the band's class beside the bar's: the
+ * plan in steps of grey from the weekly distance chart's planned tone
+ * (the progress dashes' todo) to `--ink-dim`, darkening with the zone;
+ * the run in the app's heart-rate zone ramp, lightest to darkest. Never a
+ * workout kind's slot: a zone is not a kind.
+ */
+.z12 {
+  --band-planned: color-mix(in srgb, var(--chart-rule) 50%, var(--border));
+  --band-run: var(--zone-1);
+}
+
+.z3 {
+  --band-planned: color-mix(in srgb, var(--chart-rule) 50%, var(--border-strong));
+  --band-run: var(--zone-3);
+}
+
+.z45 {
+  --band-planned: var(--ink-dim);
+  --band-run: var(--zone-5);
+}
+
+/* A hairline of the card between two bands, as the lead-in's. */
+.runBand,
+.plannedBand {
+  stroke: var(--plan-surface, var(--page));
+  stroke-width: 1;
+}
+
+.runBand {
+  fill: var(--band-run);
+}
+
+/* What the plan asks: grey, as every planned bar on the page is. */
+.plannedBand {
+  fill: var(--band-planned);
+}
+
+.key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  margin-top: auto;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-dim);
+  font-size: var(--text-label);
+}
+
+.key li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* A zone's entry: two small bars, the plan's grey and the run's colour, as a week's pair stands. */
+.pairSwatch {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+}
+
+.swatchPlanned,
+.swatchRun {
+  display: block;
+  width: 6px;
+  height: 12px;
+  border-radius: calc(var(--radius-sm) / 3) calc(var(--radius-sm) / 3) 0 0;
+}
+
+.swatchPlanned {
+  background: var(--band-planned);
+}
+
+.swatchRun {
+  background: var(--band-run);
+}
+
+/* Planned and run as the bars draw them: the three bands, grey or in the zone colours. */
+.stackSwatch {
+  display: block;
+  flex: none;
+  overflow: visible;
+}

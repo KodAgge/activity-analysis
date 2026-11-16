@@ -14,6 +14,7 @@ from activity_analysis.analysis.fitness import (
     fitness_rows,
     hr_vo2max,
     predict_from_ordinary_run,
+    prediction_anchor,
     race_predictions,
     riegel,
     smooth_series,
@@ -179,7 +180,7 @@ def test_cameron_and_riegel_agree_closely_at_short_extrapolations() -> None:
 
 def test_the_raw_heart_rate_estimate_is_not_used_directly() -> None:
     """The measured reason this whole function exists: inverting the raw
-    estimate predicts a 19.2 minute 5 km against an actual best of 25.1."""
+    estimate of 52.0 gives a 19.3 minute 5 km, and the calibration a 26.1."""
     raw = time_for_vdot(5000.0, 52.0)
     calibrated = predict_from_ordinary_run(52.0, 5000.0)
     assert calibrated is not None
@@ -187,10 +188,10 @@ def test_the_raw_heart_rate_estimate_is_not_used_directly() -> None:
 
 
 def test_the_calibration_maps_a_known_estimate_to_a_known_vdot() -> None:
-    """VDOT = 0.510 * 52.0 + 11.60 = 38.12."""
+    """VDOT = 0.586 * 52.0 + 5.92 = 36.392."""
     prediction = predict_from_ordinary_run(52.0, 5000.0)
     assert prediction is not None
-    assert abs(prediction.predicted_s - time_for_vdot(5000.0, 38.12)) < 1.0
+    assert abs(prediction.predicted_s - time_for_vdot(5000.0, 36.392)) < 1.0
 
 
 def test_the_band_brackets_the_prediction_and_is_not_symmetric_in_time() -> None:
@@ -206,7 +207,8 @@ def test_the_band_brackets_the_prediction_and_is_not_symmetric_in_time() -> None
 
 
 def test_the_band_is_about_the_measured_residual() -> None:
-    """Roughly +/-1.26 min on a 5 km, from a residual of 2.37 VDOT units."""
+    """Roughly +/-1.39 min on the 26.1 minute 5 km an estimate of 52.0 maps
+    to, from a residual of 2.30 VDOT units."""
     prediction = predict_from_ordinary_run(52.0, 5000.0)
     assert prediction is not None
     half_width = (prediction.high_s - prediction.low_s) / 2.0
@@ -444,6 +446,35 @@ def test_the_best_effort_models_come_from_the_highest_vdot_recent_effort() -> No
     assert (
         models["riegel"]["predicted_time_s"] < _models(result, "10k")["riegel"]["predicted_time_s"]
     )
+
+
+def test_race_predictions_anchors_on_prediction_anchor() -> None:
+    """The anchor is the highest-VDOT effort of at least 1 km, and both
+    best-effort models extrapolate from exactly that effort.
+
+    The 400 m here is the strongest performance by VDOT but below the
+    prediction floor, and the 1 km is faster per metre than the 5 km but a
+    weaker performance, so a rule keyed on speed or on the raw maximum would
+    pick a different effort."""
+    efforts = _recent(("400m", 400.0, 60.0), ("1k", 1000.0, 230.0), ("5k", 5000.0, 1200.0))
+    anchor = prediction_anchor(efforts)
+    assert anchor is not None
+    assert anchor["distance_key"] == "5k"
+    result = race_predictions(efforts, None)
+    for key in ("1k", "10k", "marathon"):
+        models = _models(result, key)
+        (item,) = [item for item in result["items"] if item["distance_key"] == key]
+        assert models["riegel"]["predicted_time_s"] == pytest.approx(
+            riegel(5000.0, 1200.0, item["distance_m"])
+        )
+        assert models["cameron"]["predicted_time_s"] == pytest.approx(
+            cameron(5000.0, 1200.0, item["distance_m"])
+        )
+
+
+def test_no_usable_effort_has_no_anchor() -> None:
+    assert prediction_anchor([]) is None
+    assert prediction_anchor(_recent(("400m", 400.0, 60.0), ("1k", 1000.0, 0.0))) is None
 
 
 def test_a_single_recent_distance_is_enough_for_every_model() -> None:

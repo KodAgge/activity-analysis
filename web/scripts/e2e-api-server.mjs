@@ -19,6 +19,12 @@
  * sheet per flavour, and an empty glyph range for every range of the four
  * font stacks the style names, an empty protobuf being a valid message
  * holding no glyphs. Labels therefore draw as nothing.
+ *
+ * The store also holds one accepted training plan, `tests/fixtures/plan-draft.json`
+ * run through `plan propose` and `plan accept` as of a fixed day, 2026-08-29,
+ * the day after the last fixture run, so the stored plan does not drift with
+ * the calendar. Its weeks are built around the fixture runs' dates; `plan.spec.ts`
+ * is the only spec that reads it.
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { copyFileSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -54,6 +60,18 @@ const ingest = spawnSync(
 if (ingest.status !== 0) {
   console.error(`ingesting data/examples into ${root} failed`)
   process.exit(ingest.status ?? 1)
+}
+
+const PLAN_DRAFT = fileURLToPath(new URL('../tests/fixtures/plan-draft.json', import.meta.url))
+for (const args of [
+  ['plan', 'propose', PLAN_DRAFT, '--root', root, '--today', '2026-08-29'],
+  ['plan', 'accept', '--root', root],
+]) {
+  const step = spawnSync('uv', ['run', 'activity-analysis', ...args], { cwd: PROJECT_ROOT, stdio: 'inherit' })
+  if (step.status !== 0) {
+    console.error(`seeding the e2e plan failed at: plan ${args[1]}`)
+    process.exit(step.status ?? 1)
+  }
 }
 
 const basemap = join(root, 'data', 'basemap')

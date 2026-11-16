@@ -84,6 +84,8 @@ Ingestion and `recompute` stay in the CLI.
 | `GET /api/trends` | heart rate and cadence at each of three reference paces raw and smoothed, the shrunk slope and its weight, decoupling raw and smoothed, per activity |
 | `GET /api/distributions` | every running activity, one row each, with every value the Distributions view buckets |
 | `GET /api/fitness` | the smoothed VO2max series, both methods, with the raw per-activity points, and Garmin's own VO2max by day |
+| `GET /api/threshold` | the estimated lactate threshold heart rate now, with its zone edges |
+| `GET /api/training-load` | the daily and weekly TRIMP with fitness (`ctl`), fatigue (`atl`) and form, and each run's TRIMP, the rest and maximum heart rate it used, estimated zone seconds and heart rate histogram, within local dates |
 | `GET /api/predictions` | two race models as a range from the best recent effort, plus the calibrated prediction from ordinary runs with its band, or an explicit insufficient-data state |
 | `GET /api/progression/{distance_key}` | every effort at one distance with its eligibility and record status; 404 for a key the extractor does not know and for a distance with no efforts |
 | `GET /api/routes` | every recurring route: name, run count, median distance, first and last run, and its current record |
@@ -92,6 +94,8 @@ Ingestion and `recompute` stay in the CLI.
 | `GET /api/basemap` | the fetched basemap areas, each with its id and box, plus the attribution text every served map must carry |
 | `GET /api/basemap/areas/{area_id}.pmtiles` | one area's `.pmtiles` archive, whole or by byte range |
 | `GET /api/basemap/assets/{path}` | one glyph range or sprite file the map style needs |
+| `GET /api/plans` | every training plan goal, newest first: its status, distance, target time and race date, and its accepted and pending version numbers |
+| `GET /api/plans/{goal_id}` | one goal with every version, oldest first, each with its status and the whole plan; 404 for an unknown goal |
 
 ### `GET /api/activities`
 
@@ -146,6 +150,10 @@ They differ only for a run `recompute` counted as a walk; see `docs/reference/de
 `summary.pr_distance_keys` names the distances this activity holds a record at, ordered by the distance itself rather than by the key's spelling - `10k` sorts before `1k` alphabetically and after it in metres, and a badge built from it reads wrong either way round if the order is a coincidence.
 It is an empty list, never null, for the 275 of 307 real runs that hold none: "this run set no records" is a fact, and a null would make the client guess.
 Read from the `pr` tags rather than re-derived, for the reasons under `GET /api/records`.
+
+`summary.effort_tags` lists the analysis layer's tags on the activity, each name once: the effort classification first, one of `easy`, `steady`, `intervals` or `all_out`, then the flags by name, such as `long_run`.
+`pr` is left out, since `pr_distance_keys` carries it with its distances, and the list is empty, never null, for an activity with no tags, which every non-running one is.
+It is joined from `activity_tags` in the same query as `pr_distance_keys`, so a client that colours a list of runs by effort, as the training plan's lead-in does, reads it from the list rather than asking for each run's detail; `derived.tags` on the detail still carries each tag's reasoning.
 
 `derived.metrics` carries where the activity started: `locality`, `country_code`, `country` and `locality_distance_m`, all four null together for an activity with no position at all - every treadmill run among them, 86 of the 307 real ones.
 Resolved offline at recompute time, and `locality_distance_m` is served rather than hidden because a nearest-place match is not always close: the worst on the real history is a start abroad whose nearest place in the table is 27.9 km away.
@@ -369,6 +377,28 @@ It is an empty list, never absent, when no Garmin export has been ingested.
 It is a reference beside the two estimates, not a third estimate: Garmin's number is a model of the same family as the heart rate method, and `docs/reference/math/vo2max.md`, "Against Garmin's own", compares the three.
 The field is `calendar_date` rather than `date` because a pydantic field named after its own type does not resolve.
 
+### `GET /api/threshold`
+
+`current` is the `run_load` row of the newest run, read as `queries.fitness_on` reads the newest `fitness_series` row: `lthr_bpm` as stored, null (so `current` is null) until three readings exist or when the store holds no run.
+`boundaries_bpm` is four numbers, the upper edges of zones 1 to 4 in bpm, computed on read as `analysis.threshold.zone_boundaries(lthr_bpm)`; zone 5 has no upper edge.
+Applying the fixed zone fractions to a stored number is the one computation this route does, so the fractions stay in one module.
+An empty store returns `{"current": null}` with status 200.
+The estimate and its readings are derived in `docs/reference/math/threshold-and-load.md`.
+
+### `GET /api/training-load`
+
+`from` and `to` are both optional and inclusive local calendar dates, unlike `/api/activities`, whose `to` is exclusive.
+`days` is the stored `training_load` series, one row per local day from the first run's day to the last's, rest days as zero: `trimp`, `ctl`, `atl`, `form` (`ctl - atl`), `distance_m` and `distance_7d_m`.
+`weeks` is the stored `training_load_weekly` series, one row per Monday-started week whose `week_start` is within the same inclusive dates: `week_start`, `days`, `trimp`, `ctl_mean`, `atl_mean`, `form_mean` and `distance_m`.
+A range that starts after a week's Monday therefore drops that week though some of its days are in range.
+`runs` is every run in the range, oldest first: `activity_id`, `local_date`, `lthr_bpm` (the estimate in force at the run, null before the first), `trimp`, `rest_bpm`, `max_bpm`, `rest_from_setting`, `max_from_setting`, `zone_seconds`, `hr_bpm` and `hr_seconds`.
+`rest_bpm` and `max_bpm` are what the TRIMP used, and the flags say whether each is the device setting rather than a measurement; the flags are never null, and false when there is no value.
+`runs=false` leaves `runs` empty and the two series as they are, for a client that draws only the series: the Trends view asks for it, since the runs' histograms are most of the body.
+A run with no heart rate keeps its `lthr_bpm` but has null `trimp`, an empty `zone_seconds` and empty histogram lists.
+`zone_seconds` is five numbers, estimated zones 1 to 5, and is a different thing from the device zones in `/api/activities/{id}`.
+`hr_bpm` and `hr_seconds` are parallel lists, whole bpm ascending and the seconds spent at each, so a client can redraw the zones if the edges change.
+Filtering reads the local date through `LOCAL_DATE_SQL`, so a run belongs to the day the athlete ran it.
+
 ### `GET /api/predictions`
 
 Every model's prediction at each of the `VDOT_DISTANCES_M` from a kilometre up - the same nine `vdot` reads, not all twenty-two the extractor knows - or an explicit statement of why there are none.
@@ -377,7 +407,8 @@ Every model's prediction at each of the `VDOT_DISTANCES_M` from a kilometre up -
 The derived layer declares no predictions table.
 The models are closed forms over a handful of numbers, every one of which is read from the derived layer under the eligibility rule `/api/records` uses, and "recent" is measured against the history, which a stored row would freeze at recompute time.
 The maths is `analysis.fitness.race_predictions`; the router only validates what it returns.
-This is the one endpoint that computes anything, and it computes nothing that is not a function of stored numbers.
+This is the endpoint that evaluates a model on read, and it computes nothing that is not a function of stored numbers.
+`/api/threshold` is the only other route that computes on read, applying the fixed zone fractions to the stored threshold.
 
 The window is the 90 days ending at **the most recent run in the store**, not today, so the answer is a function of the store alone and an athlete who stopped running still sees the prediction their last block of training supports.
 Inside it, the best eligible effort at each of those distances feeds the best-effort models, and the latest `hr_vo2max_smoothed` feeds the ordinary-run one.
@@ -499,6 +530,30 @@ One glyph range or sprite file from `data/basemap/assets/`, the directory `activ
 `path` is resolved against that directory and checked with `is_relative_to` before anything is read, which closes both a literal `..` segment and one that only appears after normalisation; `tests/test_api_basemap.py` tries `../../secret.txt`, `..%2F..%2Fsecret.txt` and `fonts/../../../secret.txt`, all 404.
 404 too for a path inside the directory that does not exist, since the two failures look identical to a caller: nothing worth serving is at that path.
 Excluded from the OpenAPI schema for the same reason as the archive route: MapLibre fetches glyphs and sprites directly, never through the typed client.
+
+### `GET /api/plans`
+
+The training plans `activity-analysis plan` wrote under `data/plans/`; `docs/reference/plans.md` has how a plan is written, checked and stored.
+**This router computes nothing, and it reads the plans as files, never through DuckDB**, like the basemap.
+It is read-only like every route here: proposing, accepting and rejecting stay in the CLI.
+
+`items` is one entry per goal, newest first by when its first version was written: `goal_id`, the goal's `status`, `distance_m`, `target_time_s` and `race_date`, and `accepted_version` and `pending_version`, each a version number or null.
+The distance, target and race date come from the goal's pending version, else its accepted one, else its newest, since a revision may change the goal and a rejected or withdrawn one never described it.
+SI like the rest of this file: the target is a time in seconds, and no field holds a pace.
+An empty list, not a 404, when no plan was ever proposed and `data/plans/` does not exist.
+
+**One unreadable file fails the whole list.**
+The list reads every goal's index, its first version, for the order, and the version whose figures it shows, pending else accepted else newest, so a file under `data/plans/` that is missing, unreadable or does not validate is 503, with `detail` naming the file and the reason, until the file is fixed or moved out.
+
+### `GET /api/plans/{goal_id}`
+
+One goal: `goal_id`, its `status`, and `versions`, oldest first, each a `number`, a `status` and `plan`, the stored version whole.
+`plan` is the draft Claude wrote plus the `provenance` `propose` stamped on it, with every field as `src/activity_analysis/plan/models.py` defines it: speeds in m/s, distances in metres, durations in seconds, heart rates in bpm, and dates as the athlete's local calendar dates.
+Withdrawn and rejected versions are served too; the view decides which to draw.
+
+**404 for an id that does not match the goal id pattern, checked before any path is built from it, and 404 for a directory without `index.json`.**
+A file that is missing, unreadable or does not validate is 503 naming it, as for the list.
+The context file each version was written from, `v<NNN>.context.json`, which its citations point into, is not served by either route.
 
 ## Connection model
 

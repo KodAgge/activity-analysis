@@ -135,3 +135,11 @@ h3 {
   font-family: 'IBM Plex Mono', ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
 }
+
+/* Paper is white: the page's tint would print as a grey wash over the sheet. */
+@media print {
+  html,
+  body {
+    background: #fff;
+  }
+}

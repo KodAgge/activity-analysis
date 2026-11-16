@@ -11,3 +11,9 @@ pmtiles extract https://build.protomaps.com/20261016.pmtiles web/tests/fixtures/
 Its header carries that box as its bounds, and its one tile covers the whole world.
 Its SHA-256 is `94fb3863a7f420b6e763a6b0fb6baf40d49cf95aee3978984d10a464621b4f62`.
 Its map data is © OpenStreetMap contributors, available under the Open Database License (https://www.openstreetmap.org/copyright), as built by Protomaps.
+
+`plan-draft.json` is a synthetic five kilometre plan of five weeks, one of them an outline, with a time trial and its checkpoint.
+`scripts/e2e-api-server.mjs` proposes and accepts it as of 2026-08-29, and `plan.spec.ts` reads it.
+Its weeks are built around the dates of the five fixture runs, and every value in it is made up.
+Its four weeks not ended at that day carry zone minutes, an expected VDOT and an expected Garmin VO2max.
+The fixture runs carry a TRIMP but give no threshold estimate, so the accepted version has no zone boundaries and no TRIMP per minute, and the weekly load draws its runs beside no planned bar.

@@ -79,6 +79,7 @@ def test_recompute_counts_each_run_then_names_the_history_steps(
     assert result.activities == len(all_fit_fixtures)
     assert progress.stages == [
         "comparing runs across the history",
+        "estimating threshold heart rate and load",
         "finding recurring routes",
         "mapping territory",
     ]

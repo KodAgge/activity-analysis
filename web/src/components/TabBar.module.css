@@ -61,7 +61,7 @@
 /* No wordmark on the phone. None of the six screenshots shows one: the
    screen's own title is the only thing at the top of the scroll. The rail
    below brings it back, where a 14rem column would otherwise start with an
-   unexplained list of seven words. */
+   unexplained list of eight words. */
 .brand {
   display: none;
 }
@@ -163,7 +163,7 @@
 }
 
 /*
- * The three destinations past the fourth. On a phone they are a sheet
+ * The four destinations past the fourth tab. On a phone they are a sheet
  * that rises over the bar's right-hand end, above the More tab that opens
  * it: a raised surface on the float shadow with the card radius, the
  * route map's own legend and switch, holding the links as rows - icon,
@@ -207,7 +207,7 @@
 }
 
 /*
- * Desktop: all seven destinations as a left rail.
+ * Desktop: all eight destinations as a left rail.
  *
  * A rail rather than a top bar because the screen title has to stay the
  * first thing in the reading order - a top bar puts a row of chrome above
@@ -279,5 +279,12 @@
   .tabActive:hover {
     background: color-mix(in srgb, var(--accent) 10%, transparent);
     color: var(--accent);
+  }
+}
+
+/* A printed page carries no navigation, rail or bar. */
+@media print {
+  .bar {
+    display: none;
   }
 }

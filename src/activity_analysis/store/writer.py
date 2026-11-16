@@ -19,15 +19,22 @@ from activity_analysis.models import (
     DEVICE_VO2MAX_SCHEMA,
     FITNESS_SERIES_SCHEMA,
     GRID_SCHEMA,
+    HR_HISTOGRAM_SCHEMA,
     LAP_SCHEMA,
     PROFILE_OBSERVATION_SCHEMA,
+    RESTING_HR_SCHEMA,
     ROUTE_RUN_SCHEMA,
     ROUTE_SCHEMA,
+    RUN_LOAD_SCHEMA,
     SPORT_RECLASSIFICATION_SCHEMA,
     STREAM_SCHEMA,
     TERRITORY_CLAIM_SCHEMA,
     TERRITORY_PART_SCHEMA,
     TERRITORY_REGION_SCHEMA,
+    THRESHOLD_READING_SCHEMA,
+    TRAINING_LOAD_WEEKLY_SCHEMA,
+    TRAINING_SERIES_SCHEMA,
+    ZONE_TIME_ESTIMATED_SCHEMA,
     ZONE_TIME_SCHEMA,
     empty_frame,
 )
@@ -97,6 +104,29 @@ def upsert_device_vo2max(paths: Paths, frame: pd.DataFrame) -> None:
     combined = combined.sort_values(["athlete_id", "calendar_date"]).reset_index(drop=True)
     paths.device_vo2max_parquet.parent.mkdir(parents=True, exist_ok=True)
     combined.to_parquet(paths.device_vo2max_parquet, index=False, schema=DEVICE_VO2MAX_SCHEMA)
+
+
+def read_resting_hr(paths: Paths) -> pd.DataFrame:
+    return _read(paths.resting_hr_parquet, RESTING_HR_SCHEMA)
+
+
+def upsert_resting_hr(paths: Paths, frame: pd.DataFrame) -> None:
+    """Merge ``frame`` in, one row per athlete and day, the higher version winning.
+
+    On a tie the row already stored stays, so re-reading an older or equal
+    file cannot change a day.
+    """
+    if frame.empty:
+        return
+    existing = _read(paths.resting_hr_parquet, RESTING_HR_SCHEMA)
+    # Incoming rows first: the stable sort and keep="last" then leave the
+    # stored row standing on an equal version.
+    combined = pd.concat([frame[RESTING_HR_SCHEMA.names], existing], ignore_index=True)
+    combined = combined.sort_values("record_version", kind="stable")
+    combined = combined.drop_duplicates(["athlete_id", "calendar_date"], keep="last")
+    combined = combined.sort_values(["athlete_id", "calendar_date"]).reset_index(drop=True)
+    paths.resting_hr_parquet.parent.mkdir(parents=True, exist_ok=True)
+    combined.to_parquet(paths.resting_hr_parquet, index=False, schema=RESTING_HR_SCHEMA)
 
 
 def write_streams(paths: Paths, activity_id: str, frame: pd.DataFrame) -> None:
@@ -239,3 +269,51 @@ def write_sport_reclassifications(paths: Paths, frame: pd.DataFrame) -> None:
 
 def read_sport_reclassifications(paths: Paths) -> pd.DataFrame:
     return _read(paths.sport_reclassifications_parquet, SPORT_RECLASSIFICATION_SCHEMA)
+
+
+def write_threshold_readings(paths: Paths, frame: pd.DataFrame) -> None:
+    _write_table(paths.threshold_readings_parquet, THRESHOLD_READING_SCHEMA, frame)
+
+
+def read_threshold_readings(paths: Paths) -> pd.DataFrame:
+    return _read(paths.threshold_readings_parquet, THRESHOLD_READING_SCHEMA)
+
+
+def write_run_load(paths: Paths, frame: pd.DataFrame) -> None:
+    _write_table(paths.run_load_parquet, RUN_LOAD_SCHEMA, frame)
+
+
+def read_run_load(paths: Paths) -> pd.DataFrame:
+    return _read(paths.run_load_parquet, RUN_LOAD_SCHEMA)
+
+
+def write_zone_time_estimated(paths: Paths, frame: pd.DataFrame) -> None:
+    _write_table(paths.zone_time_estimated_parquet, ZONE_TIME_ESTIMATED_SCHEMA, frame)
+
+
+def read_zone_time_estimated(paths: Paths) -> pd.DataFrame:
+    return _read(paths.zone_time_estimated_parquet, ZONE_TIME_ESTIMATED_SCHEMA)
+
+
+def write_hr_histogram(paths: Paths, frame: pd.DataFrame) -> None:
+    _write_table(paths.hr_histogram_parquet, HR_HISTOGRAM_SCHEMA, frame)
+
+
+def read_hr_histogram(paths: Paths) -> pd.DataFrame:
+    return _read(paths.hr_histogram_parquet, HR_HISTOGRAM_SCHEMA)
+
+
+def write_training_load(paths: Paths, frame: pd.DataFrame) -> None:
+    _write_table(paths.training_load_parquet, TRAINING_SERIES_SCHEMA, frame)
+
+
+def read_training_load(paths: Paths) -> pd.DataFrame:
+    return _read(paths.training_load_parquet, TRAINING_SERIES_SCHEMA)
+
+
+def write_training_load_weekly(paths: Paths, frame: pd.DataFrame) -> None:
+    _write_table(paths.training_load_weekly_parquet, TRAINING_LOAD_WEEKLY_SCHEMA, frame)
+
+
+def read_training_load_weekly(paths: Paths) -> pd.DataFrame:
+    return _read(paths.training_load_weekly_parquet, TRAINING_LOAD_WEEKLY_SCHEMA)

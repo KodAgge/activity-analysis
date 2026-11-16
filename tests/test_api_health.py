@@ -121,6 +121,8 @@ def test_the_schema_describes_every_endpoint_the_frontend_needs(api_client: Test
         "/api/activities/{activity_id}",
         "/api/activities/{activity_id}/streams",
         "/api/overview",
+        "/api/plans",
+        "/api/plans/{goal_id}",
     }
 
 

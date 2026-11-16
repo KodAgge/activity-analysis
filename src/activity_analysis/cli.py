@@ -22,7 +22,8 @@ from activity_analysis.basemap.fetch import (
     run_tiles,
     urllib_fetch,
 )
-from activity_analysis.config import DEFAULT_ATHLETE_ID, Paths, default_paths
+from activity_analysis.cli_options import RootOption, paths_from
+from activity_analysis.config import DEFAULT_ATHLETE_ID
 from activity_analysis.ingest.archive import (
     GARMIN,
     STRAVA,
@@ -32,10 +33,12 @@ from activity_analysis.ingest.archive import (
     unpack_garmin_uploads,
 )
 from activity_analysis.ingest.pipeline import ingest as run_ingest
+from activity_analysis.plan.cli import plan_app
 from activity_analysis.progress import Progress
 from activity_analysis.store.db import connect
 
 app = typer.Typer(help="Advanced training analysis for runners.", no_args_is_help=True)
+app.add_typer(plan_app, name="plan")
 
 #: An activity's start as a local wall clock, from the UTC instant and the
 #: offset it was recorded under.
@@ -49,22 +52,6 @@ LOCAL_START_SQL = (
     "strftime(start_time_utc AT TIME ZONE 'UTC' "
     "+ to_seconds(coalesce(utc_offset_s, 0)), '%Y-%m-%d %H:%M')"
 )
-
-RootOption = Annotated[
-    Path | None,
-    typer.Option(
-        "--root",
-        help=(
-            "Directory holding the data directory. Defaults to $ACTIVITY_ANALYSIS_HOME, "
-            "then the platform's user data directory."
-        ),
-        show_default=False,
-    ),
-]
-
-
-def _paths(root: Path | None) -> Paths:
-    return Paths(root=root) if root is not None else default_paths()
 
 
 class _TerminalProgress(Progress):
@@ -110,7 +97,7 @@ def ingest(
     if archive_kind not in ("auto", STRAVA, GARMIN):
         typer.echo(f"--archive-kind must be 'auto', 'strava' or 'garmin', not {archive_kind!r}")
         raise typer.Exit(code=1)
-    paths = _paths(root)
+    paths = paths_from(root)
 
     if source.is_file() and source.suffix.lower() == ".zip":
         # Unpacked into the store's raw/ rather than beside the zip, which is
@@ -167,6 +154,8 @@ def ingest(
         )
     if result.vo2max_files:
         typer.echo(f"  {result.vo2max_files} Garmin VO2max file(s) read")
+    if result.resting_hr_files:
+        typer.echo(f"  {result.resting_hr_files} Garmin resting heart rate file(s) read")
     for zipped, message in unpack_errors:
         typer.echo(f"  error: {zipped}: cannot unpack, so its activities were not read: {message}")
     for path, message in result.errors:
@@ -176,8 +165,11 @@ def ingest(
     # leaves the application showing the old one until this has run. A store
     # whose last recompute never finished counts too: re-running the same
     # ingest after an interrupted one ingests nothing, and must still finish it.
+    # A new resting heart rate counts too, since every run's TRIMP is weighed
+    # against it.
     rebuilt = True
-    if recompute and (result.ingested or result.replaced or derived_is_behind(paths)):
+    changed = result.ingested or result.replaced or result.resting_hr_files
+    if recompute and (changed or derived_is_behind(paths)):
         typer.echo("recomputing the derived layer")
         rebuilt = _report_recompute(run_recompute(paths, PROGRESS))
     if result.errors or unpack_errors or not rebuilt:
@@ -191,6 +183,7 @@ def _report_recompute(result: RecomputeResult) -> bool:
         f"{result.zone_rows} zone rows, {result.tag_rows} tags, "
         f"{result.profile_intervals} profile intervals, "
         f"{result.efficiency_rows} efficiency rows, {result.fitness_rows} fitness rows"
+        f", {result.threshold_readings} threshold readings"
         f", {result.reclassified} run(s) counted as walks"
         f", {result.routes} routes"
         f", {result.territory_claims} territory claims"
@@ -209,7 +202,7 @@ def recompute_command(root: RootOption = None) -> None:
     # A partial rebuild is a failure, not a warning: a scripted
     # `recompute && <next step>` must not proceed against a derived layer
     # that is missing activities.
-    if not _report_recompute(run_recompute(_paths(root), PROGRESS)):
+    if not _report_recompute(run_recompute(paths_from(root), PROGRESS)):
         raise typer.Exit(code=1)
 
 
@@ -228,7 +221,7 @@ def tiles(
     Each area fetched sends its box, at least 10 x 10 km, to the Protomaps
     build host. Areas already fetched are never requested again.
     """
-    paths = _paths(root)
+    paths = paths_from(root)
     try:
         result = run_tiles(
             paths,
@@ -255,7 +248,7 @@ def tiles(
 @app.command()
 def activities(root: RootOption = None, limit: int = 20) -> None:
     """List stored activities, newest first."""
-    with connect(_paths(root)) as con:
+    with connect(paths_from(root)) as con:
         rows = con.execute(
             # Rendered at the offset the run was recorded under, not at the
             # reader's. The session timezone would be a guess that happens to
@@ -279,14 +272,23 @@ def activities(root: RootOption = None, limit: int = 20) -> None:
         # A GPX file records no offset, so the instant is all there is to show.
         stamp = f"{start} UTC" if offset_unknown else start
         typer.echo(
-            f"{stamp:<20} {str(sport or '-'):<9} {distance:>8.0f} m  {elapsed:>6.0f} s  {source}"
+            f"{stamp:<20} {str(sport or '-'):<9} {_whole(distance):>8} m  "
+            f"{_whole(elapsed):>6} s  {source}"
         )
+
+
+def _whole(value: float | None) -> str:
+    """A rounded figure, or "-" for one the device never wrote.
+
+    A strength session has no distance, and a real store holds such rows.
+    """
+    return "-" if value is None else f"{value:.0f}"
 
 
 @app.command()
 def info(root: RootOption = None) -> None:
     """Show store location, row counts, and the bundled reference data."""
-    paths = _paths(root)
+    paths = paths_from(root)
     typer.echo(f"root:      {paths.root}")
     typer.echo(f"canonical: {paths.canonical}")
     typer.echo(f"derived:   {paths.derived}")
@@ -334,7 +336,7 @@ def openapi(root: RootOption = None) -> None:
 
     from activity_analysis.api.main import create_app
 
-    typer.echo(json.dumps(create_app(_paths(root)).openapi(), indent=2))
+    typer.echo(json.dumps(create_app(paths_from(root)).openapi(), indent=2))
 
 
 def _reaches_beyond_this_machine(host: str) -> bool:
@@ -403,7 +405,7 @@ def serve(
     from activity_analysis.api import frontend
     from activity_analysis.api.main import create_app
 
-    paths = _paths(root)
+    paths = paths_from(root)
     build = frontend.find_build()
     typer.echo(f"serving {paths.root} on http://{host}:{port}")
     if build is not None:

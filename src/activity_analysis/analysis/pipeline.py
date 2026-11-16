@@ -9,6 +9,7 @@ rather than a loud one.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any
 
 import pandas as pd
@@ -24,6 +25,7 @@ from activity_analysis.analysis.efficiency import (
     smooth_efficiency,
 )
 from activity_analysis.analysis.fitness import fitness_rows
+from activity_analysis.analysis.load import daily_series, hr_histogram, weekly_series
 from activity_analysis.analysis.metrics import activity_metrics
 from activity_analysis.analysis.profile import (
     observations_for_sport,
@@ -45,6 +47,8 @@ from activity_analysis.analysis.routes import (
 )
 from activity_analysis.analysis.tags import TagHistory, classify_effort
 from activity_analysis.analysis.territory import Track, claim_territory, territory_tables
+from activity_analysis.analysis.threshold import estimate_at, run_readings, zone_boundaries
+from activity_analysis.analysis.trimp import max_at, peak_hr, rest_at, run_trimp, trimp_by_zone
 from activity_analysis.analysis.zones import zone_time
 from activity_analysis.config import ANALYSIS_VERSION, Paths
 from activity_analysis.models import (
@@ -54,12 +58,18 @@ from activity_analysis.models import (
     ATHLETE_FIT_SCHEMA,
     BEST_EFFORT_SCHEMA,
     FITNESS_SERIES_SCHEMA,
+    HR_HISTOGRAM_SCHEMA,
     ROUTE_RUN_SCHEMA,
     ROUTE_SCHEMA,
+    RUN_LOAD_SCHEMA,
     SPORT_RECLASSIFICATION_SCHEMA,
     TERRITORY_CLAIM_SCHEMA,
     TERRITORY_PART_SCHEMA,
     TERRITORY_REGION_SCHEMA,
+    THRESHOLD_READING_SCHEMA,
+    TRAINING_LOAD_WEEKLY_SCHEMA,
+    TRAINING_SERIES_SCHEMA,
+    ZONE_TIME_ESTIMATED_SCHEMA,
     ZONE_TIME_SCHEMA,
     empty_frame,
 )
@@ -69,6 +79,7 @@ from activity_analysis.store.writer import (
     read_derived_stream,
     read_laps,
     read_profile_observations,
+    read_resting_hr,
     read_streams,
     write_activity_efficiency,
     write_activity_metrics,
@@ -78,13 +89,19 @@ from activity_analysis.store.writer import (
     write_best_efforts,
     write_derived_stream,
     write_fitness_series,
+    write_hr_histogram,
     write_route_runs,
     write_routes,
+    write_run_load,
     write_sport_reclassifications,
     write_territory_claims,
     write_territory_parts,
     write_territory_regions,
+    write_threshold_readings,
+    write_training_load,
+    write_training_load_weekly,
     write_zone_time,
+    write_zone_time_estimated,
 )
 
 #: The derived layer is a running application. Other sports stay canonical.
@@ -100,6 +117,11 @@ class RecomputeResult:
     tag_rows: int = 0
     efficiency_rows: int = 0
     fitness_rows: int = 0
+    #: Runs with an LTHR reading, runs with a load row, and days in the
+    #: daily training load series.
+    threshold_readings: int = 0
+    run_load_rows: int = 0
+    training_load_days: int = 0
     routes: int = 0
     #: Runs that claimed ground, and the ground claimed, in m^2.
     territory_claims: int = 0
@@ -180,19 +202,223 @@ def _samples_with_years(samples: list[ActivitySample], runs: pd.DataFrame) -> li
     ]
 
 
+@dataclass
+class ThresholdTables:
+    """The six tables the threshold and load pass writes."""
+
+    readings: pd.DataFrame
+    run_load: pd.DataFrame
+    zones: pd.DataFrame
+    histogram: pd.DataFrame
+    daily: pd.DataFrame
+    weekly: pd.DataFrame
+
+    @classmethod
+    def empty(cls) -> ThresholdTables:
+        return cls(
+            empty_frame(THRESHOLD_READING_SCHEMA),
+            empty_frame(RUN_LOAD_SCHEMA),
+            empty_frame(ZONE_TIME_ESTIMATED_SCHEMA),
+            empty_frame(HR_HISTOGRAM_SCHEMA),
+            empty_frame(TRAINING_SERIES_SCHEMA),
+            empty_frame(TRAINING_LOAD_WEEKLY_SCHEMA),
+        )
+
+
+def _local_date(start: pd.Timestamp, utc_offset_s: Any) -> date:
+    """The run's calendar day where it was run, as ``queries.LOCAL_DATE_SQL`` has it.
+
+    A run with no recorded offset, which is every GPX, is read in UTC there
+    too, so the two agree on which day its load falls.
+    """
+    offset = 0 if utc_offset_s is None or pd.isna(utc_offset_s) else int(utc_offset_s)
+    return (start + pd.Timedelta(seconds=offset)).date()
+
+
+def _max_hr_by_activity(
+    runs: pd.DataFrame, written: set[str], profile: pd.DataFrame
+) -> dict[str, float]:
+    """Each written run's maximum heart rate in force at its start, NaN without one."""
+    out: dict[str, float] = {}
+    for _, activity in runs.iterrows():
+        activity_id = str(activity["activity_id"])
+        if activity_id not in written:
+            continue
+        settings = profile_at(
+            profile, str(activity["athlete_id"]), pd.Timestamp(activity["start_time_utc"])
+        )
+        max_hr = None if settings is None else settings.get("max_hr_bpm")
+        out[activity_id] = float("nan") if max_hr is None or pd.isna(max_hr) else float(max_hr)
+    return out
+
+
+def _setting(settings: pd.Series | None, column: str) -> float | None:
+    """One device setting from a ``profile_at`` row, None when absent."""
+    value = None if settings is None else settings.get(column)
+    return None if value is None or pd.isna(value) else float(value)
+
+
+def _threshold_tables(
+    paths: Paths,
+    runs: pd.DataFrame,
+    written: set[str],
+    efforts: pd.DataFrame,
+    excluded: set[str],
+    all_out: set[str],
+    profile: pd.DataFrame,
+    resting: pd.DataFrame,
+) -> ThresholdTables:
+    """Readings over the whole history, then each run's estimate, zones and TRIMP.
+
+    Each run is judged against the estimate, the resting heart rate and the
+    maximum in force at its own start, so a run from three years ago is
+    zoned and weighed on the heart of three years ago. Rest is the measured
+    28 day median on the run's local date and max the median of the three
+    highest peaks in 540 days, each falling back to the device setting with
+    a flag (see ``analysis.trimp``). A run with no heart rate gets a
+    ``run_load`` row with a null TRIMP and nothing in the zone table: a zero
+    would say the run was effortless. So does a run whose rest is at or above
+    its max, which only a bad setting can give, since there is no reserve to
+    divide by. Zones need an estimate; TRIMP and the histogram do not.
+    """
+    ordered = runs[runs["activity_id"].astype(str).isin(written)].sort_values(
+        "start_time_utc", kind="stable"
+    )
+    # Only the columns the readings, the zones, the peaks and the histogram
+    # read: the whole history's grids are held at once.
+    grids = {
+        str(activity_id): read_derived_stream(paths, str(activity_id))[["t_s", "hr_bpm", "paused"]]
+        for activity_id in ordered["activity_id"]
+    }
+    readings = run_readings(
+        efforts, grids, ordered, excluded, all_out, _max_hr_by_activity(runs, written, profile)
+    )
+    readings["analysis_version"] = ANALYSIS_VERSION
+
+    # Every run's peak first, since a run's max is read from the peaks of the
+    # 540 days up to and including it.
+    peaks = pd.DataFrame(
+        {
+            "athlete_id": ordered["athlete_id"].astype(str).to_numpy(),
+            "start_time_utc": ordered["start_time_utc"].to_numpy(),
+            "peak_hr_10s_bpm": [
+                peak_hr(grids[str(activity_id)]) for activity_id in ordered["activity_id"]
+            ],
+        }
+    ).astype({"peak_hr_10s_bpm": "float64"})
+    peaks["start_time_utc"] = pd.to_datetime(peaks["start_time_utc"], utc=True)
+    peaks_by_athlete = dict(tuple(peaks.groupby("athlete_id")))
+    resting_by_athlete = dict(tuple(resting.groupby(resting["athlete_id"].astype(str))))
+
+    load_rows: list[dict[str, Any]] = []
+    zone_frames: list[pd.DataFrame] = []
+    histogram_frames: list[pd.DataFrame] = []
+    for (_, activity), peak in zip(ordered.iterrows(), peaks["peak_hr_10s_bpm"], strict=True):
+        activity_id = str(activity["activity_id"])
+        athlete_id = str(activity["athlete_id"])
+        grid = grids[activity_id]
+        start = pd.Timestamp(activity["start_time_utc"])
+        local_date = _local_date(start, activity["utc_offset_s"])
+        settings = profile_at(profile, athlete_id, start)
+
+        rest_measured = rest_at(resting_by_athlete.get(athlete_id, resting.iloc[:0]), local_date)
+        rest = (
+            rest_measured.bpm if rest_measured is not None else _setting(settings, "resting_hr_bpm")
+        )
+        max_measured = max_at(peaks_by_athlete[athlete_id], start)
+        max_bpm = max_measured if max_measured is not None else _setting(settings, "max_hr_bpm")
+        # No reserve to divide by when rest is not below max.
+        reserve = (
+            (rest, max_bpm) if rest is not None and max_bpm is not None and rest < max_bpm else None
+        )
+
+        lthr, reading_ids = estimate_at(readings, start)
+        histogram = hr_histogram(grid)
+        trimp: float | None = None
+        if not histogram.empty:
+            histogram.insert(0, "activity_id", activity_id)
+            histogram_frames.append(histogram)
+            if reserve is not None:
+                trimp = run_trimp(grid, *reserve)
+            if lthr is not None:
+                boundaries = zone_boundaries(lthr)
+                zones = zone_time(grid, boundaries)
+                zones["trimp"] = (
+                    float("nan") if reserve is None else trimp_by_zone(grid, boundaries, *reserve)
+                )
+                zones.insert(0, "activity_id", activity_id)
+                zone_frames.append(zones)
+        load_rows.append(
+            {
+                "activity_id": activity_id,
+                "start_time_utc": start,
+                "local_date": local_date,
+                "distance_m": activity["distance_m"],
+                "lthr_bpm": lthr,
+                "reading_ids": reading_ids,
+                "trimp": trimp,
+                "peak_hr_10s_bpm": peak,
+                "rest_bpm": rest,
+                "max_bpm": max_bpm,
+                "rest_from_setting": rest_measured is None and rest is not None,
+                "rest_measured_through": (
+                    None if rest_measured is None else rest_measured.measured_through
+                ),
+                "max_from_setting": max_measured is None and max_bpm is not None,
+            }
+        )
+
+    tables = ThresholdTables.empty()
+    tables.readings = readings
+    if load_rows:
+        loads = pd.DataFrame(load_rows).astype(
+            {
+                column: "float64"
+                for column in (
+                    "distance_m",
+                    "lthr_bpm",
+                    "trimp",
+                    "peak_hr_10s_bpm",
+                    "rest_bpm",
+                    "max_bpm",
+                )
+            }
+        )
+        # Every run counts towards the daily series, one without heart rate
+        # too: it adds no TRIMP but its distance, which is there for the legs.
+        tables.daily = daily_series(loads[["local_date", "trimp", "distance_m"]])
+        tables.weekly = weekly_series(tables.daily)
+        tables.run_load = loads.drop(columns=["local_date", "distance_m"])
+    if zone_frames:
+        tables.zones = pd.concat(zone_frames, ignore_index=True)
+    if histogram_frames:
+        tables.histogram = pd.concat(histogram_frames, ignore_index=True)
+    for frame in (tables.run_load, tables.zones, tables.histogram, tables.daily, tables.weekly):
+        frame["analysis_version"] = ANALYSIS_VERSION
+    return tables
+
+
 def derived_is_behind(paths: Paths) -> bool:
-    """Whether the canonical store holds activities no finished recompute has seen.
+    """Whether the canonical store holds data no finished recompute has seen.
 
     Read from modification times: ``recompute`` writes every derived table in
     one burst at its end, ``territory_parts`` last, so a ``territory_parts``
-    older than ``activities.parquet``, or missing beside it, means the last
-    recompute was interrupted or never run since the last ingest.
+    older than ``activities.parquet`` or ``resting_hr.parquet``, or missing
+    beside them, means the last recompute was interrupted or never run since
+    the last ingest. The resting series counts because every run's TRIMP is
+    weighed against it.
     """
-    canonical = paths.activities_parquet
-    last_written = paths.territory_parts_parquet
-    if not canonical.is_file():
+    if not paths.activities_parquet.is_file():
         return False
-    return not last_written.is_file() or last_written.stat().st_mtime < canonical.stat().st_mtime
+    last_written = paths.territory_parts_parquet
+    if not last_written.is_file():
+        return True
+    newest_input = max(
+        source.stat().st_mtime
+        for source in (paths.activities_parquet, paths.resting_hr_parquet)
+        if source.is_file()
+    )
+    return last_written.stat().st_mtime < newest_input
 
 
 def recompute(paths: Paths, progress: Progress = SILENT) -> RecomputeResult:
@@ -461,9 +687,7 @@ def recompute(paths: Paths, progress: Progress = SILENT) -> RecomputeResult:
     fitness_all = empty_frame(FITNESS_SERIES_SCHEMA)
     try:
         grids: dict[str, tuple[Any, Any]] = {}
-        max_hr_by_activity: dict[str, float] = {}
-        for _, activity in runs.iterrows():
-            activity_id = str(activity["activity_id"])
+        for activity_id in runs["activity_id"].astype(str):
             if activity_id not in written:
                 continue
             grid = read_derived_stream(paths, activity_id)
@@ -471,13 +695,7 @@ def recompute(paths: Paths, progress: Progress = SILENT) -> RecomputeResult:
                 grid["speed_mps"].to_numpy(dtype=float),
                 grid["hr_bpm"].to_numpy(dtype=float),
             )
-            settings = profile_at(
-                profile, str(activity["athlete_id"]), pd.Timestamp(activity["start_time_utc"])
-            )
-            max_hr = None if settings is None else settings.get("max_hr_bpm")
-            max_hr_by_activity[activity_id] = (
-                float("nan") if max_hr is None or pd.isna(max_hr) else float(max_hr)
-            )
+        max_hr_by_activity = _max_hr_by_activity(runs, written, profile)
         fitness_all = fitness_rows(runs, efforts_all, grids, max_hr_by_activity, not_known_outdoors)
         if fitness_all.empty:
             fitness_all = empty_frame(FITNESS_SERIES_SCHEMA)
@@ -486,6 +704,35 @@ def recompute(paths: Paths, progress: Progress = SILENT) -> RecomputeResult:
     except Exception as exc:  # noqa: BLE001 - the tables still have to be written
         result.errors.append(("fitness", f"{type(exc).__name__}: {exc}"))
         fitness_all = empty_frame(FITNESS_SERIES_SCHEMA)
+
+    progress.stage("estimating threshold heart rate and load")
+    # The threshold and load pass. Whole-history like the fitness pass, since
+    # a run's estimate and maximum rest on the runs before it, and contained
+    # the same way: a failure leaves all six tables written empty rather than
+    # stale.
+    # Outdoor only for the readings, by the rule the records use, because a
+    # treadmill's speed would distort which of a run's efforts is its hardest.
+    # Only a run the loop above tagged all out gives a reading at all, and
+    # only from an effort that was itself hard under the run's maximum.
+    try:
+        all_out = {
+            str(row["activity_id"])
+            for row in tag_rows
+            if row["kind"] == "effort" and row["tag"] == "all_out"
+        }
+        threshold = _threshold_tables(
+            paths,
+            runs,
+            written,
+            efforts_all,
+            not_known_outdoors,
+            all_out,
+            profile,
+            read_resting_hr(paths),
+        )
+    except Exception as exc:  # noqa: BLE001 - the tables still have to be written
+        result.errors.append(("threshold", f"{type(exc).__name__}: {exc}"))
+        threshold = ThresholdTables.empty()
 
     progress.stage("finding recurring routes")
     # Routes need every run's grid and the whole history's efforts, so they
@@ -576,6 +823,13 @@ def recompute(paths: Paths, progress: Progress = SILENT) -> RecomputeResult:
     write_athlete_fit(paths, fit_frame)
     write_fitness_series(paths, fitness_all)
 
+    write_threshold_readings(paths, threshold.readings)
+    write_run_load(paths, threshold.run_load)
+    write_zone_time_estimated(paths, threshold.zones)
+    write_hr_histogram(paths, threshold.histogram)
+    write_training_load(paths, threshold.daily)
+    write_training_load_weekly(paths, threshold.weekly)
+
     write_routes(paths, routes_frame)
     write_route_runs(paths, route_runs_frame)
 
@@ -592,4 +846,7 @@ def recompute(paths: Paths, progress: Progress = SILENT) -> RecomputeResult:
     result.tag_rows = len(tags_all)
     result.fitness_rows = len(fitness_all)
     result.routes = len(routes_frame)
+    result.threshold_readings = len(threshold.readings)
+    result.run_load_rows = len(threshold.run_load)
+    result.training_load_days = len(threshold.daily)
     return result

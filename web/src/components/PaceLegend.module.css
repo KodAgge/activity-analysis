@@ -36,5 +36,5 @@
   gap: var(--space-3);
   color: var(--ink);
   font-size: var(--text-label);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: proportional-nums;
 }

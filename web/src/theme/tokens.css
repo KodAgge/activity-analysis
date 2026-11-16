@@ -375,6 +375,13 @@
      it as "not a chart yet", and 80 px is the floor they named. */
   --chart-trend-strip: 6.5rem;
 
+  /* The Trends training load chart: weekly TRIMP bars with three lines over
+     them, and form in a short panel underneath on the same date axis. The
+     bars' band is about the Overview's `--chart-height` and the form panel
+     about a third of it. uPlot builds the canvas at this box's height;
+     `web/tests/phase4.spec.ts` checks in a browser that it fills the box. */
+  --chart-load-height: 18rem;
+
   /* The progression scatter, which is taller again and for a different
      reason: it is not a series but a cloud, and the band it has to separate
      its points in is brutally uneven. Measured on the real 5 km history -

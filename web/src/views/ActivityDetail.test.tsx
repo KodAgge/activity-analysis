@@ -175,6 +175,7 @@ function summaryFixture(overrides: Partial<ActivitySummary> = {}): ActivitySumma
     calories: 821.0,
     source: 'strava_fit',
     pr_distance_keys: [],
+    effort_tags: [],
     ...overrides,
   }
 }
@@ -203,6 +204,7 @@ function noHeartRateSummaryFixture(overrides: Partial<ActivitySummary> = {}): Ac
     calories: 400.0,
     source: 'strava_fit',
     pr_distance_keys: [],
+    effort_tags: [],
     ...overrides,
   }
 }
@@ -231,6 +233,7 @@ function cyclingSummaryFixture(overrides: Partial<ActivitySummary> = {}): Activi
     calories: 75.0,
     source: 'strava_fit',
     pr_distance_keys: [],
+    effort_tags: [],
     ...overrides,
   }
 }

@@ -37,8 +37,12 @@ CLAUDE.local.md
 # Lavish review artifacts (scratch review surface)
 .lavish/
 
-# Claude Code local state, including worktrees
-.claude/
+# Claude Code local state, including worktrees and personal skills; only the
+# training-plan skill, which drives `activity-analysis plan`, is tracked
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/training-plan/
 
 # Implementation plans, design documents and the backlog: the maintainer's
 # working notes, kept in a private repository rather than published here
