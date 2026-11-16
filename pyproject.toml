@@ -1,6 +1,6 @@
 [project]
 name = "activity-analysis"
-version = "0.2.0"
+version = "0.3.0"
 description = "Advanced training analysis for runners"
 readme = "README.md"
 license = "MIT"

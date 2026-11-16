@@ -376,6 +376,39 @@ test('the weekly load, the heart-rate mix and the VO2max outlook draw the plan, 
   await expect(dialog.getByRole('list', { name: 'Steps' })).toContainText('up to 150 bpm')
 })
 
+test('the trajectory draws the expected line and the measured lines, ending at the header\'s prediction', async ({
+  page,
+}) => {
+  await page.clock.setFixedTime(new Date('2026-08-29T12:00:00'))
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.goto('/plan')
+
+  const section = page.locator('section', { has: page.getByRole('heading', { level: 2, name: 'Trajectory' }) })
+  const chart = section.getByRole('img', { name: /^Predicted time, expected and measured/ })
+  await expect(chart).toBeVisible()
+  // Dashed from the series' value at data_through through the four weeks
+  // that carry an expected VDOT; solid where the fixture runs measured each model.
+  await expect(chart.locator('polyline[data-series="expected"]')).toHaveCount(1)
+  await expect(chart.locator('polyline[data-series="best_efforts"]')).toHaveCount(1)
+  await expect(chart.locator('polyline[data-series="ordinary_runs"]')).toHaveCount(1)
+  await expect(chart.locator('[data-mark="target"]')).toHaveCount(1)
+  await expect(section.getByRole('status')).toHaveCount(0)
+
+  // The header's prediction, the trajectory's latest and the predictions
+  // table's 5 km are one number.
+  const predictions = (await (await page.request.get('/api/predictions')).json()) as {
+    items: { distance_key: string; models: { model: string; predicted_time_s: number }[] }[]
+  }
+  const seconds = Math.round(
+    predictions.items.find((item) => item.distance_key === '5k')?.models.find((m) => m.model === 'best_efforts')
+      ?.predicted_time_s ?? Number.NaN,
+  )
+  const time = `${String(Math.floor(seconds / 60))}:${String(seconds % 60).padStart(2, '0')}`
+  const header = page.locator('header[data-plan-week]')
+  await expect(header.getByText('Predicted today, best efforts').locator('xpath=following-sibling::dd[1]')).toHaveText(time)
+  await expect(section.getByText('Latest prediction').locator('xpath=following-sibling::dd[1]')).toHaveText(time)
+})
+
 test('a version stamped with a TRIMP per minute draws its planned load', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-08-29T12:00:00'))
   await page.setViewportSize({ width: 1280, height: 900 })

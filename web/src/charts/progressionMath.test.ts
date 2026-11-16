@@ -5,6 +5,8 @@ import {
   DEFAULT_PLOT_WIDTH,
   PLOT_INSET,
   DIAMOND_HALF_DIAGONAL_PER_RADIUS,
+  SMOOTHING_WINDOW_DAYS,
+  breakAtGaps,
   diamondPath,
   durationAxisScale,
   inPaintOrder,
@@ -328,5 +330,26 @@ describe('diamondPath', () => {
     })
     expect(Math.abs(twiceArea) / 2).toBeCloseTo(Math.PI * 36, 9)
     expect(DIAMOND_HALF_DIAGONAL_PER_RADIUS).toBeCloseTo(1.2533, 4)
+  })
+})
+
+describe('breakAtGaps', () => {
+  it('puts a null between two values more than the smoothing window apart', () => {
+    expect(SMOOTHING_WINDOW_DAYS).toBe(42)
+    expect(breakAtGaps([{ t: 0, v: 10 }, { t: 42, v: 11 }, { t: 100, v: 12 }])).toEqual([
+      { t: 0, v: 10 },
+      { t: 42, v: 11 },
+      { t: 71, v: null },
+      { t: 100, v: 12 },
+    ])
+  })
+
+  it('measures from the last value, across a null', () => {
+    expect(breakAtGaps([{ t: 0, v: 10 }, { t: 30, v: null }, { t: 50, v: 12 }])).toEqual([
+      { t: 0, v: 10 },
+      { t: 30, v: null },
+      { t: 25, v: null },
+      { t: 50, v: 12 },
+    ])
   })
 })

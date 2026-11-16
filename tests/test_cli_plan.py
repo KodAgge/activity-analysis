@@ -9,6 +9,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import pytest
 from typer.testing import CliRunner
 
@@ -16,6 +17,7 @@ from activity_analysis.cli import app
 from activity_analysis.config import Paths
 from activity_analysis.plan.context import build_context
 from activity_analysis.plan.models import PlanDraft
+from activity_analysis.store.writer import read_fitness_series
 from tests.test_plan_models import five_week_draft
 
 runner = CliRunner()
@@ -28,9 +30,21 @@ def _draft(**overrides: Any) -> PlanDraft:
     return five_week_draft(goal=base.goal.model_dump() | {"goal_id": GOAL_ID}, **overrides)
 
 
-def _write(tmp_path: Path, draft: PlanDraft) -> Path:
+def _write(tmp_path: Path, draft: PlanDraft, store: Paths) -> Path:
+    """``draft`` on disk with every week's ``expected_vdot`` where check 21 wants it.
+
+    A curve starts at the store's best-efforts series value, so a draft written
+    against the ingested fixtures follows that value rather than the 48.0 the
+    synthetic draft carries.
+    """
+    series = read_fitness_series(store).sort_values(["start_time_utc", "activity_id"])
+    start = series["best_efforts_vdot"].iloc[-1]
+    data = draft.model_dump(mode="json")
+    if pd.notna(start):
+        for week in data["weeks"]:
+            week["expected_vdot"] = float(start)
     path = tmp_path / "draft.json"
-    path.write_text(draft.model_dump_json())
+    path.write_text(json.dumps(data))
     return path
 
 
@@ -39,7 +53,7 @@ def _invoke(store: Paths, *args: str) -> Any:
 
 
 def _propose(store: Paths, tmp_path: Path, draft: PlanDraft | None = None) -> Any:
-    path = _write(tmp_path, draft or _draft())
+    path = _write(tmp_path, draft or _draft(), store)
     return _invoke(store, "plan", "propose", str(path), "--today", TODAY)
 
 
@@ -177,7 +191,7 @@ def test_propose_stamps_target_and_estimate_vdot(ingested_store: Paths, tmp_path
 
 
 def test_check_prints_the_plan_and_stores_nothing(ingested_store: Paths, tmp_path: Path) -> None:
-    path = _write(tmp_path, _draft())
+    path = _write(tmp_path, _draft(), ingested_store)
     result = _invoke(ingested_store, "plan", "check", str(path), "--today", TODAY)
     assert result.exit_code == 0, result.stderr
     assert f"Goal {GOAL_ID}" in result.stdout
@@ -188,7 +202,7 @@ def test_check_prints_the_plan_and_stores_nothing(ingested_store: Paths, tmp_pat
 def test_check_refuses_what_propose_refuses(ingested_store: Paths, tmp_path: Path) -> None:
     data = _draft().model_dump(mode="json")
     data["weeks"][1]["sessions"][0]["date"] = str(_draft().weeks[3].start_date)
-    path = _write(tmp_path, PlanDraft.model_validate(data))
+    path = _write(tmp_path, PlanDraft.model_validate(data), ingested_store)
     result = _invoke(ingested_store, "plan", "check", str(path), "--today", TODAY)
     assert result.exit_code == 1
     assert "outside the week of" in result.stderr
@@ -221,7 +235,7 @@ def test_check_prints_the_week_figures_beside_a_missing_load_note(
     _with_load(monkeypatch)
     data = _draft().model_dump(mode="json")
     data["weeks"][0]["load_note"] = None
-    path = _write(tmp_path, PlanDraft.model_validate(data))
+    path = _write(tmp_path, PlanDraft.model_validate(data), ingested_store)
     result = _invoke(ingested_store, "plan", "check", str(path), "--today", TODAY)
     assert result.exit_code == 1
     week = next(line for line in result.stdout.splitlines() if line.endswith(" over the week"))

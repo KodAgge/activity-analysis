@@ -97,6 +97,21 @@
  * wide at 55% opacity, which at the phone scale factor came out a 0.57 px
  * line at half strength and disappeared into the grid.
  */
+.predictionLine {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  /* Under the staircase and above the marks, and never a hit target: like
+     the staircase it would otherwise swallow the hover of every point it
+     crosses. */
+  pointer-events: none;
+}
+
+/* A prediction run drawn alone, not a hit target for the same reason. */
+.predictionDot {
+  pointer-events: none;
+}
+
 .staircase {
   fill: none;
   stroke: var(--accent);

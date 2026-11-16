@@ -196,9 +196,12 @@ export function scatterLayout(
   efforts: EffortDatum[],
   panelWidthPx: number = DEFAULT_PLOT_WIDTH,
   panelHeightPx: number = DEFAULT_PLOT_HEIGHT,
+  extraTimesS: readonly number[] = [],
 ): ScatterLayout {
   const days = efforts.map((e) => e.t)
-  const times = efforts.map((e) => e.valueS)
+  // `extraTimesS` widen the ladder only: lines drawn over the efforts must
+  // sit inside a labelled band, but they never move the date axis.
+  const times = [...efforts.map((e) => e.valueS), ...extraTimesS]
   const dayMin = (days.length === 0 ? 0 : Math.min(...days)) - X_PAD_DAYS
   const dayMax = (days.length === 0 ? 0 : Math.max(...days)) + X_PAD_DAYS
 
@@ -412,4 +415,71 @@ export function diamondPath(cx: number, cy: number, r: number): string {
   const a = r * DIAMOND_HALF_DIAGONAL_PER_RADIUS
   const at = (x: number, y: number) => `${String(x)} ${String(y)}`
   return `M ${at(cx, cy - a)} L ${at(cx + a, cy)} L ${at(cx, cy + a)} L ${at(cx - a, cy)} Z`
+}
+
+/** `MIN_PREDICTION_DISTANCE_M` in the API: the shortest distance a prediction is made at. */
+export const MIN_PREDICTION_DISTANCE_M = 1000
+
+/** `MAX_HISTORY_DISTANCE_M` in the API: the longest distance the prediction history is asked at. */
+export const MAX_HISTORY_DISTANCE_M = 100_000
+
+/**
+ * The two prediction models' colours on every chart that draws them:
+ * Trends, Progression and the plan's trajectory and outlook. Best efforts
+ * take `--series-5`, apart from the records' `--accent`, which
+ * `--series-1` shares, and from the efforts' `--series-4`.
+ */
+export const PREDICTION_COLOR_VAR = { best_efforts: '--series-5', ordinary_runs: '--series-2' } as const
+
+/**
+ * `SMOOTHING_WINDOW_DAYS` in the analysis layer: the trailing window each
+ * prediction is a mean over. Between two runs more than one window apart,
+ * the straight line between their values is not a value the series held
+ * day by day, so a segment across the gap would invent one. Their windows
+ * may still overlap through the raw values' longer reach, which is why
+ * this is not a claim that the two values are independent.
+ */
+export const SMOOTHING_WINDOW_DAYS = 42
+
+/**
+ * A prediction series with a null put between any two values more than
+ * `SMOOTHING_WINDOW_DAYS` apart, midway, so a chart breaks the line there
+ * rather than drawing a straight segment across months without a run.
+ * Measured from the last value, across any null already in the series.
+ * `t` is a day number, as `splitAtNulls` takes it.
+ */
+export function breakAtGaps(
+  points: readonly { t: number; v: number | null }[],
+  maxGapDays: number = SMOOTHING_WINDOW_DAYS,
+): { t: number; v: number | null }[] {
+  const out: { t: number; v: number | null }[] = []
+  let last: number | null = null
+  for (const point of points) {
+    if (point.v !== null) {
+      if (last !== null && point.t - last > maxGapDays) out.push({ t: (last + point.t) / 2, v: null })
+      last = point.t
+    }
+    out.push({ t: point.t, v: point.v })
+  }
+  return out
+}
+
+/**
+ * A series as runs of consecutive points, broken at every null value: a
+ * line must not join across a stretch where the model had no estimate.
+ * `t` is the fractional local day, `v` the time in seconds or null.
+ */
+export function splitAtNulls(points: readonly { t: number; v: number | null }[]): { t: number; v: number }[][] {
+  const runs: { t: number; v: number }[][] = []
+  let current: { t: number; v: number }[] = []
+  for (const point of points) {
+    if (point.v === null) {
+      if (current.length > 0) runs.push(current)
+      current = []
+    } else {
+      current.push({ t: point.t, v: point.v })
+    }
+  }
+  if (current.length > 0) runs.push(current)
+  return runs
 }

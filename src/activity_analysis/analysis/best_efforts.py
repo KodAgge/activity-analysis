@@ -76,7 +76,7 @@ _VDOT_DISTANCE_KEYS = frozenset({"400m", "1k", "1mi", "3k", "5k", "10k", "15k", 
 #: activity's ``vdot`` and ``vdot_distance_key`` and every predicted time,
 #: because both take the best over whatever candidates they are given: an
 #: activity that scored highest at 3 km would score higher at the new 2 km or
-#: 4 km, and the race models anchor on the highest-scoring recent effort.
+#: 4 km, and the prediction series averages each run's highest score.
 #:
 #: Derived from ``STANDARD_DISTANCES_M`` rather than restated, so the two
 #: cannot disagree about what 1 mile is and cannot fall out of one order.

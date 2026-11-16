@@ -14,6 +14,9 @@ import {
 import { TrainingLoadChart } from '../charts/TrainingLoadChart'
 import { latestCompleteWeek, weighsAnyRun } from '../charts/trainingLoadMath'
 import { TrendChart, type TrendPointDatum, type TrendSeries } from '../charts/TrendChart'
+import { timeLadder } from '../charts/planChartMath'
+import { PREDICTION_COLOR_VAR, breakAtGaps } from '../charts/progressionMath'
+import type { AxisScale } from '../charts/trendChartMath'
 import {
   MIN_TREND_RUNS,
   cadenceLevelTrend,
@@ -52,7 +55,6 @@ import {
   formLabel,
   formatDecoupling,
   formatPredictionBand,
-  formatPredictionSpan,
   formatVo2max,
   formatWholeVo2max,
   heartRate,
@@ -72,6 +74,7 @@ import styles from './Trends.module.css'
 type TrendPoint = components['schemas']['TrendPoint']
 type FitnessPoint = components['schemas']['FitnessPoint']
 type Prediction = components['schemas']['Prediction']
+type PredictionHistoryPoint = components['schemas']['PredictionHistoryPoint']
 
 /**
  * The classifier's effort tags in the order it ranks them, for the filter's
@@ -90,6 +93,9 @@ const EFFORT_ORDER = ['easy', 'steady', 'intervals', 'all_out'] as const
  * be read from the Python source rather than pinned by a generated type.
  */
 const ORDINARY_RUNS_SOURCE = 'ordinary_runs'
+
+/** The distance the predicted-time chart opens on. */
+const DEFAULT_HISTORY_DISTANCE_KEY = '5k'
 
 /** The filter's key for a run the classifier could not tag, most often one with no heart rate. */
 const UNTAGGED = 'untagged'
@@ -302,6 +308,15 @@ function decouplingSeriesFrom(items: TrendPoint[], markLatest: boolean): TrendSe
     },
   ]
 }
+
+/** The predicted-time chart's y ladder: whole and half minutes, `timeLadder`'s, as the plan's trajectory. */
+function timeAxisScale(lo: number, hi: number): AxisScale {
+  const ladder = timeLadder([lo, hi])
+  return { min: ladder.min, max: ladder.max, splits: ladder.ticks }
+}
+
+/** The ordinary-runs band, keyed once and tinted in its line's colour. */
+const HISTORY_BAND = { label: `${raceModelLabel('ordinary_runs')} range`, colorVar: PREDICTION_COLOR_VAR.ordinary_runs }
 
 /** A fitness point's x, on the run's own wall clock through the offset joined in from `/api/trends`. */
 function fitnessTime(point: FitnessPoint, offsets: ReadonlyMap<string, number | null>): number {
@@ -626,6 +641,16 @@ export function Trends() {
   const trendsQuery = useQuery(queries.trends())
   const fitnessQuery = useQuery(queries.fitness())
   const predictionsQuery = useQuery(queries.predictions())
+  const [historyKey, setHistoryKey] = useState(DEFAULT_HISTORY_DISTANCE_KEY)
+  // The chosen distance, or the first one listed when the default is not among them.
+  const predictionItems = predictionsQuery.data?.items ?? []
+  const activeHistoryItem = predictionItems.find((item) => item.distance_key === historyKey) ?? predictionItems[0]
+  const activeHistoryKey = activeHistoryItem?.distance_key
+  const historyDistanceM = activeHistoryItem?.distance_m
+  const historyQuery = useQuery({
+    ...queries.predictionHistory(historyDistanceM ?? 0),
+    enabled: historyDistanceM !== undefined,
+  })
   // The period's own dates, the last one included: `/api/training-load`
   // takes both bounds inclusive where the period's `to` is exclusive. The
   // load is windowed by the request rather than here, since its weekly
@@ -760,6 +785,37 @@ export function Trends() {
     () => new Map(allItems.map((point) => [point.activity_id, point.utc_offset_s])),
     [allItems],
   )
+  // One point per run, on the run's own wall clock through the offset the
+  // history carries. The ordinary-runs band edges are the stored low and
+  // high times, which the chart fills between.
+  const historySeries = useMemo<TrendSeries[]>(() => {
+    const t = (point: PredictionHistoryPoint) => localCalendarTime(point.start_time_utc, point.utc_offset_s)
+    const points = (historyQuery.data?.points ?? []).filter((point) => inWindow(Math.floor(t(point)), dayRange))
+    // Each line breaks where runs are more than the smoothing window apart.
+    const line = (
+      label: string,
+      field: keyof PredictionHistoryPoint,
+      colorVar: string,
+      edge = false,
+    ): TrendSeries => ({
+      label,
+      colorVar,
+      ...(edge ? { edge } : {}),
+      points: breakAtGaps(
+        points.map((point) => {
+          const value = point[field]
+          return { t: t(point), v: typeof value === 'number' ? value : null }
+        }),
+      ),
+    })
+    return [
+      line(raceModelLabel('best_efforts'), 'best_efforts_s', PREDICTION_COLOR_VAR.best_efforts),
+      line(raceModelLabel('ordinary_runs'), 'ordinary_runs_s', PREDICTION_COLOR_VAR.ordinary_runs),
+      line(`${raceModelLabel('ordinary_runs')}, faster end`, 'ordinary_runs_low_s', PREDICTION_COLOR_VAR.ordinary_runs, true),
+      line(`${raceModelLabel('ordinary_runs')}, slower end`, 'ordinary_runs_high_s', PREDICTION_COLOR_VAR.ordinary_runs, true),
+    ]
+  }, [historyQuery.data, dayRange])
+
   const vo2maxSeries = useMemo(() => {
     const fitness = fitnessQuery.data?.items ?? []
     const device = fitnessQuery.data?.device ?? []
@@ -1109,6 +1165,30 @@ export function Trends() {
     )
   })()
 
+  const historyBody = (() => {
+    if (historyQuery.isPending) return <p className={styles.status}>Loading the predicted times…</p>
+    if (historyQuery.isError) {
+      return (
+        <p className={styles.status} role="alert">
+          Could not load the predicted times: {describeApiError(historyQuery.error)}
+        </p>
+      )
+    }
+    return (
+      <TrendChart
+        series={historySeries}
+        yLabel="time"
+        formatValue={duration}
+        formatTick={duration}
+        invertY
+        yScale={timeAxisScale}
+        band={HISTORY_BAND}
+        emptyReason={allTime ? 'No run has a predicted time at this distance yet.' : 'No run in this period has a predicted time at this distance.'}
+        ariaLabel="Predicted time over time"
+      />
+    )
+  })()
+
   const predictionsBody = (() => {
     if (predictionsQuery.isPending) return <p className={styles.status}>Loading the predictions…</p>
     if (predictionsQuery.isError) {
@@ -1129,12 +1209,8 @@ export function Trends() {
     if (data.items.length === 0) {
       return <Absent label="No predictions yet" reason={data.reason ?? 'Not enough eligible efforts to predict from.'} />
     }
-    // The best-effort models are reported as one range, not as separate
-    // point estimates. That is the contract on both sides: `RaceModel`'s own
-    // validator lets them omit a band because "their spread is the range
-    // across the two models, shown by the caller".
-    const bestEffortModels = (prediction: Prediction) =>
-      prediction.models.filter((model) => model.source !== ORDINARY_RUNS_SOURCE)
+    const bestEffortsModel = (prediction: Prediction) =>
+      prediction.models.find((model) => model.source !== ORDINARY_RUNS_SOURCE)
     const ordinaryRunsModel = (prediction: Prediction) =>
       prediction.models.find((model) => model.source === ORDINARY_RUNS_SOURCE)
 
@@ -1177,7 +1253,7 @@ export function Trends() {
           </thead>
           <tbody>
             {data.items.map((prediction) => {
-              const fromEfforts = bestEffortModels(prediction)
+              const fromEfforts = bestEffortsModel(prediction)
               const fromOrdinary = ordinaryRunsModel(prediction)
               return (
                 <tr key={prediction.distance_key} data-distance-key={prediction.distance_key}>
@@ -1197,35 +1273,12 @@ export function Trends() {
                     )}
                   </th>
                   <td className={styles.numeric}>
-                    {fromEfforts.length === 0 ? (
-                      <span className={styles.value}>{NO_VALUE}</span>
-                    ) : (
-                      <>
-                        <span className={styles.value}>
-                          {formatPredictionSpan(fromEfforts.map((model) => model.predicted_time_s))}
-                        </span>
-                        {/* The models behind the range, so a reader can see
-                            which one sets each end rather than having to
-                            trust the span. Their paces are not repeated
-                            here: three times and three paces in a column 83
-                            px wide is the dense-table fault this screen was
-                            rebuilt to remove, and the range is the reading.
-                            The ordinary-runs prediction keeps its own pace,
-                            because it is a single estimate rather than a
-                            spread. */}
-                        <span className={styles.modelDetail}>
-                          {fromEfforts.map((model) => (
-                            <span key={model.model} className={`${styles.modelRow} ${styles.modelPair}`}>
-                              {raceModelLabel(model.model)}{' '}
-                              <span className={styles.modelTime}>{duration(model.predicted_time_s)}</span>
-                            </span>
-                          ))}
-                        </span>
-                      </>
-                    )}
+                    <span className={styles.value}>
+                      {fromEfforts === undefined ? NO_VALUE : duration(fromEfforts.predicted_time_s)}
+                    </span>
                   </td>
                   <td className={styles.numeric}>
-                    {/* Secondary to the range beside it, in the detail
+                    {/* Secondary to the best-efforts time beside it, in the detail
                         ink rather than the headline's: it reads what
                         typical training supports, so after a breakthrough
                         effort it sits slower than the best efforts by
@@ -1254,6 +1307,25 @@ export function Trends() {
             })}
           </tbody>
         </table>
+        <fieldset className={styles.picker}>
+          <legend className={styles.pickerLabel}>Predicted time at</legend>
+          <div className={styles.pills}>
+            {data.items.map((item) => (
+              <label key={item.distance_key} className={styles.pill}>
+                <input
+                  className={styles.pillInput}
+                  type="radio"
+                  name="prediction-history-distance"
+                  value={item.distance_key}
+                  checked={item.distance_key === activeHistoryKey}
+                  onChange={() => setHistoryKey(item.distance_key)}
+                />
+                <span className={styles.pillBody}>{distanceKeyLabel(item.distance_key)}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        {historyBody}
       </>
     )
   })()
@@ -1353,45 +1425,27 @@ export function Trends() {
         {predictionsBody}
         <About>
           <p>
-            What the best efforts and the ordinary runs say the athlete could race today. Two models
-            extrapolate from the best recent effort, the one with the highest VDOT, and are shown as a
-            range: narrow near that effort&apos;s distance and wider far from it, where they diverge. The
-            calibrated prediction from ordinary runs carries the residual band of its own fit. None is a
+            What the best efforts and the ordinary runs say the athlete could race today. Each is a daily
+            VDOT, smoothed over 42 days and converted to a time at the distance, so one run moves neither
+            line. The ordinary-runs prediction carries the residual band of its own calibration. Neither is a
             promise.
           </p>
           <p>
-            The prediction from ordinary runs is a second reading rather than a third model. It is
+            The ordinary-runs prediction is a second reading rather than a second race prediction. It is
             calibrated against the best 5 km inside six weeks of training, which is rarely a race, so it
             says what typical training supports and sits slower than the best efforts after a breakthrough
-            run. A critical speed model fitted across every distance&apos;s best was removed: on the history
-            this page was developed against, easy long runs among those bests made it predict a 10 km
-            slower than one the window already held.
+            run. The chart under the table draws both over time, fastest at the top, and the band of the
+            ordinary-runs line is its stored low and high time.
             See <span className="mono">docs/reference/math/predictions.md</span>.
           </p>
-          {/* Every claim below is `docs/reference/math/predictions.md`'s, which
-              owns them: the exponent above 1 because pace decays with
-              distance and the marathon optimism that follows from it, the
-              fatigue factors fitted in miles from 400 m upwards, the removed
-              critical speed fit, and the calibration against the VDOT of the
-              nearby best 5 km and why it runs slow after a breakthrough. A figure or a claim here that the document does not carry
-              is a defect, not a simplification. */}
         <dl className={styles.models}>
           <div>
-            <dt>Riegel</dt>
+            <dt>Best efforts</dt>
             <dd>
-              One exponent applied to the ratio between the two distances, fitted to record performances.
-              It is above 1 because pace decays with distance, so doubling a distance costs more than
-              doubling the time. Known to be optimistic at the marathon end, where a single exponent cannot
-              capture the extra fatigue past two hours, which is why it is never shown alone.
-            </dd>
-          </div>
-          <div>
-            <dt>Cameron</dt>
-            <dd>
-              A fatigue factor per distance, fitted to observed times from 400 m to the marathon, scaling
-              pace by the ratio between the two distances&apos; factors. It agrees closely with Riegel over
-              a doubling and diverges from it at the long end, which is what makes showing both
-              informative.
+              The mean of the three highest per-run VDOTs from the last 90 days, over runs with a trusted
+              best effort of at least a kilometre, smoothed over 42 days and converted to a time at the
+              distance. Three runs rather than one, so a single 5 km and 10 km from the same run cannot fill
+              the mean.
             </dd>
           </div>
           <div>

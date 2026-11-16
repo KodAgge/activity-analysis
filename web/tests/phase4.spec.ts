@@ -343,12 +343,74 @@ test('/trends draws all three reference-pace series and the model-output caveat 
     await expect(hrLegend.getByText(label, { exact: true })).toBeVisible()
   }
   await expect(page.getByText(/level is a model output/i)).toBeVisible()
-  // VO2max, heart rate, cadence and decoupling, and the training load when
-  // a run carries TRIMP. The cadence slope states its finding and draws
-  // nothing, because the quantity does not trend - see
-  // `docs/reference/frontend.md`.
+  // VO2max, the predicted time over time, heart rate, cadence and
+  // decoupling, and the training load when a run carries TRIMP. The cadence
+  // slope states its finding and draws nothing, because the quantity does
+  // not trend - see `docs/reference/frontend.md`.
   const weighed = await loadIsWeighed(page)
-  await expect(page.locator('canvas')).toHaveCount(weighed ? 5 : 4)
+  await expect(page.locator('canvas')).toHaveCount(weighed ? 6 : 5)
+})
+
+test('/trends draws the predicted time over time under the table, ending at the time the table prints', async ({
+  page,
+}) => {
+  const empty = await emptyEndpoints(page, ['/api/predictions'])
+  test.skip(empty.length > 0, needsRows(empty))
+  type Model = { model: string; predicted_time_s: number }
+  const predictions = (await (await page.request.get('/api/predictions')).json()) as {
+    items: { distance_key: string; distance_m: number; models: Model[] }[]
+  }
+  const fiveK = predictions.items.find((item) => item.distance_key === '5k')
+  test.skip(fiveK === undefined, 'the store has no 5 km prediction')
+  const history = (await (await page.request.get(`/api/predictions/history?distance_m=${String(fiveK?.distance_m)}`)).json()) as {
+    points: { best_efforts_s: number | null }[]
+  }
+  // The line's last point is the time the table prints: one stored series.
+  const lastLine = history.points.findLast((point) => point.best_efforts_s !== null)?.best_efforts_s
+  const tableTime = fiveK?.models.find((model) => model.model === 'best_efforts')?.predicted_time_s
+  expect(lastLine).toBeDefined()
+  expect(lastLine).toBeCloseTo(tableTime ?? Number.NaN, 6)
+
+  await page.goto(TRENDS_ALL_TIME)
+  const section = page.locator('section', { has: page.getByRole('heading', { level: 2, name: 'Race predictions' }) })
+  const picker = section.getByRole('group', { name: 'Predicted time at' })
+  await expect(picker.getByRole('radio', { name: '5 km', exact: true })).toBeChecked()
+  const chart = section.getByRole('img', { name: 'Predicted time over time' })
+  await expect(chart).toBeVisible()
+  // Two lines and the ordinary-runs band, keyed once rather than by its two edges.
+  const legend = section.getByRole('list', { name: 'Predicted time over time legend' })
+  await expect(legend.getByRole('listitem')).toHaveCount(3)
+  await expect(legend.getByText('Best efforts', { exact: true })).toBeVisible()
+  await expect(legend.getByText('Ordinary runs', { exact: true })).toBeVisible()
+  await expect(legend.getByText('Ordinary runs range', { exact: true })).toBeVisible()
+
+  // Another distance asks for its own history.
+  const asked = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/predictions/history' && url.searchParams.get('distance_m') === '10000'
+  })
+  await picker.getByText('10 km', { exact: true }).click()
+  await asked
+  await expect(picker.getByRole('radio', { name: '10 km', exact: true })).toBeChecked()
+  await expect(chart).toBeVisible()
+})
+
+test('/progression draws both prediction lines over the efforts from 1 km up, and says why there are none under it', async ({
+  page,
+}) => {
+  const keys = await recordDistanceKeys(page)
+  test.skip(!keys.includes('5k'), 'the store has no 5 km efforts')
+  await page.goto('/progression?distance=5k')
+  await expect(page.locator('polyline[data-series="best_efforts"]').first()).toBeVisible()
+  await expect(page.locator('polyline[data-series="ordinary_runs"]').first()).toBeVisible()
+  const key = page.getByRole('list', { name: 'Predicted time' })
+  await expect(key.getByText('Best efforts prediction')).toBeVisible()
+  await expect(key.getByText('Ordinary runs prediction')).toBeVisible()
+
+  test.skip(!keys.includes('400m'), 'the store has no 400 m efforts')
+  await page.goto('/progression?distance=400m')
+  await expect(key.getByText('Predictions start at 1 km')).toBeVisible()
+  await expect(page.locator('polyline[data-series]')).toHaveCount(0)
 })
 
 test('/trends draws the training load section with its figures, its key and a readout', async ({ page }) => {

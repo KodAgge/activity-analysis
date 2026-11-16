@@ -24,7 +24,6 @@ import {
   dataAgeDays,
   daysToRace,
   raceSetsEstimate,
-  snapshotPrediction,
   timeTrialDate,
 } from './planMath'
 import type { PlanDetail, PlanVersionEntry, RaceResult, WeekEntry } from './planMath'
@@ -47,6 +46,12 @@ export interface PlanHeaderProps {
   /** `planMath.nextWeek`: the week the week controls take, or null to draw none. */
   week: WeekEntry | null
   today: Date
+  /**
+   * The best-efforts series' newest time at the goal distance,
+   * `planMath.latestBestEffortsS`, which the trajectory's stat row reads
+   * too; null while it loads or when the series has none.
+   */
+  predictedTodayS: number | null
   /** The zone boundaries in bpm the copied week labels its heart rate targets with, as the session dialog does. */
   zoneBoundaries?: readonly number[] | null
 }
@@ -62,7 +67,7 @@ const DAYS_PER_WEEK = 7
  *   behind an icon, the phase strip (`PlanPhases`, one dash per week) and
  *   under it the weeks completed against the countdown, Runna's
  *   `Weeks completed` and `Distance` pair: four layers, as Runna's card.
- * - **The estimate card** sets Claude's estimate beside the best-effort
+ * - **The estimate card** sets Claude's estimate beside today's best-effort
  *   prediction, and at its foot who made it and from which runs: the
  *   version's provenance.
  * - **The action card** is the PDF and week buttons as Runna's round icon
@@ -84,21 +89,30 @@ const DAYS_PER_WEEK = 7
  * in place of the countdown and asks for nothing.
  *
  * **The estimate rests on recent best efforts only**, decided on
- * 2026-11-14, so the header sets Claude's estimate beside the best-effort
- * prediction as a pair and shows no ordinary-run prediction. A plan with
- * no recent effort to estimate from states none and schedules a time
- * trial; the header names that trial's day where the estimate would be.
+ * 2026-11-14, so the header sets Claude's estimate beside today's
+ * best-effort prediction as a pair and shows no ordinary-run prediction.
+ * Today's, not the version's snapshot, so the header and the trajectory's
+ * solid line end at one number. A plan with no recent effort to estimate
+ * from states none and schedules a time trial; the header names that
+ * trial's day where the estimate would be.
  *
  * **The provenance line says how old the data is when it matters.** A
  * plan written from runs more than `STALE_AFTER_DAYS` before today was
  * written without the athlete's latest week, and says so in days.
  */
-export function PlanHeader({ entry, goalStatus, result, week, today, zoneBoundaries = null }: PlanHeaderProps) {
+export function PlanHeader({
+  entry,
+  goalStatus,
+  result,
+  week,
+  today,
+  predictedTodayS,
+  zoneBoundaries = null,
+}: PlanHeaderProps) {
   const { goal, provenance } = entry.plan
   const title = goalTitle(goal.distance_m, goal.target_time_s)
   const todayDay = calendarDayOfLocalDate(today)
   const days = daysToRace(goal.race_date, today)
-  const best = snapshotPrediction(entry.plan, 'riegel')
   const estimate = estimateText(entry, today, todayDay)
   // A time sits beside the other; the sentence that stands in for a
   // missing one takes the card's whole width.
@@ -186,8 +200,8 @@ export function PlanHeader({ entry, goalStatus, result, week, today, zoneBoundar
               <dd className={sentence ? `${styles.value} ${styles.valueSentence}` : styles.value}>{estimate}</dd>
             </div>
             <div className={styles.estimateItem}>
-              <dt className={styles.label}>Predicted, best efforts</dt>
-              <dd className={styles.value}>{duration(best?.predicted_time_s ?? null)}</dd>
+              <dt className={styles.label}>Predicted today, best efforts</dt>
+              <dd className={styles.value}>{duration(predictedTodayS)}</dd>
             </div>
           </dl>
           <p className={styles.provenance}>

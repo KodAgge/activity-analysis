@@ -9,6 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from activity_analysis.plan.models import (
+    EXPECTED_VDOT_START_TOLERANCE,
     ChangeEntry,
     Checkpoint,
     HeartRateRange,
@@ -642,6 +643,47 @@ def test_expected_garmin_vo2max_is_required_only_when_the_watch_has_a_value() ->
     assert _check(no_vdot, context=without) == [
         "week of 2027-02-15 has not ended and needs expected_vdot"
     ]
+
+
+def _series_context(value: float | None) -> dict[str, Any]:
+    return {**CONTEXT, "fitness_now": {"garmin_vo2max": 52, "best_efforts_vdot": value}}
+
+
+def test_check_refuses_a_curve_that_does_not_start_on_the_series() -> None:
+    # The fixture's first week ends 2027-02-14, after data_through 2027-02-05.
+    too_far = _week_edit(
+        five_week_draft(), 0, expected_vdot=45.0 + EXPECTED_VDOT_START_TOLERANCE + 0.1
+    )
+    problems = _check(too_far, context=_series_context(45.0))
+    assert len(problems) == 1
+    assert "2027-02-08" in problems[0]
+    assert "45.0" in problems[0]
+    assert f"{45.0 + EXPECTED_VDOT_START_TOLERANCE + 0.1:.1f}" in problems[0]
+    near = _week_edit(
+        five_week_draft(), 0, expected_vdot=45.0 + EXPECTED_VDOT_START_TOLERANCE - 0.1
+    )
+    assert _check(near, context=_series_context(45.0)) == []
+
+
+def test_check_reads_the_start_rule_on_the_first_week_that_has_not_ended() -> None:
+    # data_through 2027-02-14 is week 1's Sunday, so week 2 is the first that
+    # has not ended. Week 1 is frozen from an earlier version and week 3 is
+    # free to move away from the start, so neither is compared.
+    through = date(2027, 2, 14)
+    far = 45.0 + EXPECTED_VDOT_START_TOLERANCE + 5.0
+    draft = _week_edit(_week_edit(five_week_draft(), 0, expected_vdot=far), 2, expected_vdot=far)
+    draft = _week_edit(draft, 1, expected_vdot=45.0)
+    assert _check(draft, through=through, context=_series_context(45.0)) == []
+    off = _week_edit(draft, 1, expected_vdot=far)
+    problems = _check(off, through=through, context=_series_context(45.0))
+    assert len(problems) == 1
+    assert "week of 2027-02-15" in problems[0]
+
+
+def test_check_skips_the_start_rule_without_a_series_value() -> None:
+    far = _week_edit(five_week_draft(), 0, expected_vdot=60.0)
+    assert _check(far, context=_series_context(None)) == []
+    assert _check(far) == []
 
 
 def test_an_easy_run_step_needs_a_heart_rate_and_no_speed() -> None:

@@ -110,7 +110,7 @@
         25,
         5
       ],
-      "expected_vdot": 38.8,
+      "expected_vdot": 32.4,
       "expected_garmin_vo2max": 45,
       "load_note": "Fatigue sits above fitness after last week's runs: keep Tuesday and Thursday easy so Saturday's long run starts fresh."
     },
@@ -180,7 +180,7 @@
         20,
         5
       ],
-      "expected_vdot": 39.1,
+      "expected_vdot": 32.7,
       "expected_garmin_vo2max": 45,
       "load_note": "The time trial is the week's one hard effort: run the days before it under the ceiling and arrive rested."
     },
@@ -198,7 +198,7 @@
         20,
         5
       ],
-      "expected_vdot": 39.4,
+      "expected_vdot": 33.0,
       "expected_garmin_vo2max": 46
     },
     {
@@ -261,7 +261,7 @@
         5,
         15
       ],
-      "expected_vdot": 39.8,
+      "expected_vdot": 33.3,
       "expected_garmin_vo2max": 46,
       "load_note": "Race week: fatigue falls below fitness as the volume drops, so keep the strides short and the easy runs easy."
     }

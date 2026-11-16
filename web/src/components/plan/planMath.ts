@@ -8,6 +8,7 @@ import {
   paceFromSpeed,
   stepAmount,
 } from '../../format'
+import { SMOOTHING_WINDOW_DAYS } from '../../charts/progressionMath'
 import { planEasySpeed, planProfileScale } from '../../charts/sessionProfileMath'
 import type { SessionProfileOptions } from '../../charts/sessionProfileMath'
 
@@ -31,7 +32,7 @@ export type Outcome = Schemas['Outcome']
 export type SpeedRange = Schemas['SpeedRange']
 export type PlanVersionEntry = Schemas['PlanVersionEntry']
 export type ChangeEntry = Schemas['ChangeEntry']
-export type SnapshotPrediction = Schemas['SnapshotPrediction']
+export type PredictionHistoryPoint = Schemas['PredictionHistoryPoint']
 export type RaceResult = Schemas['RaceResult']
 export type ActivitySummary = Schemas['ActivitySummary']
 
@@ -113,30 +114,6 @@ export function archivedByAccepting(plans: PlanSummary[], goalId: string): strin
   const goal = plans.find((p) => p.goal_id === goalId)
   if (goal === undefined || goal.accepted_version !== null) return null
   return plans.find((p) => p.status === 'active' && p.goal_id !== goalId)?.goal_id ?? null
-}
-
-/** How far a prediction's distance may lie from the goal's and still be the goal's: 0.5%. */
-const GOAL_DISTANCE_TOLERANCE = 0.005
-
-/**
- * Whether a prediction's distance is the goal's own. Within a tolerance
- * rather than equal: a half marathon goal written as 21100 m is the
- * prediction's 21097.5 m.
- */
-export function atGoalDistance(distanceM: number, goalM: number): boolean {
-  return Math.abs(distanceM - goalM) <= GOAL_DISTANCE_TOLERANCE * goalM
-}
-
-/**
- * One model's prediction at the goal's own distance from the version's
- * snapshot, or null when the context had none there. `riegel` is the
- * best-effort model, the one `trajectory` reads.
- */
-export function snapshotPrediction(version: PlanVersion, model: string): SnapshotPrediction | null {
-  return (
-    version.provenance.snapshot.find((p) => atGoalDistance(p.distance_m, version.goal.distance_m) && p.model === model) ??
-    null
-  )
 }
 
 /** Deep equality that ignores object key order, for JSON-shaped values. */
@@ -307,28 +284,65 @@ export function daysToRace(raceDate: string, today: Date): number {
 }
 
 /**
- * Each live version's best-effort prediction at the goal distance, the
- * `riegel` model, in version order. Withdrawn and rejected versions never
- * described the athlete's plan, so they are left out.
+ * The shown version's expected predicted time at the goal distance, the
+ * trajectory's dotted line, oldest first: a first point at `data_through`,
+ * then `expected_prediction`, each week's `expected_vdot` the server
+ * inverted at its last day or the race.
  *
- * The ordinary-run prediction is not read: the plan's estimate rests on
- * recent best efforts only, decided on 2026-11-14, so the Plan view shows
- * no other prediction.
+ * The first point is the best-efforts series' value at `data_through`, the
+ * newest history point on that local day or before it, which `plan check`
+ * starts a new version's curve on. With that start, the weeks ending on or
+ * before `data_through` are left out: a revision keeps its ended weeks'
+ * `expected_vdot`, and drawing them would run the line back from its start. Where that point has no best-efforts
+ * value, or there is none, as for a version written before the series,
+ * Claude's estimate stands in, the curve's start before the series
+ * existed; with neither, the line starts at its first week. `history` is
+ * null while it is not known, loading or failed, and then the line starts
+ * at its first week too, rather than at an estimate the series would
+ * replace once it arrives.
+ *
+ * Empty for a version without `expected_prediction`: a start alone is not
+ * a line.
  */
-export function trajectory(
-  detail: PlanDetail,
-  goalDistanceM: number,
-): { number: number; createdAt: string; bestEffortS: number | null }[] {
-  return detail.versions
-    .filter((v) => v.status !== 'withdrawn' && v.status !== 'rejected')
-    .sort((a, b) => a.number - b.number)
-    .map((v) => ({
-      number: v.number,
-      createdAt: v.plan.provenance.created_at,
-      bestEffortS:
-        v.plan.provenance.snapshot.find((p) => atGoalDistance(p.distance_m, goalDistanceM) && p.model === 'riegel')
-          ?.predicted_time_s ?? null,
-    }))
+export function expectedLine(
+  entry: PlanVersionEntry,
+  history: PredictionHistoryPoint[] | null,
+): { date: string; valueS: number }[] {
+  const weeks = entry.expected_prediction.map((p) => ({ date: p.local_date, valueS: p.time_s }))
+  const dataThrough = entry.plan.provenance.data_through ?? null
+  if (weeks.length === 0 || dataThrough === null || history === null) return weeks
+  const through = calendarDayOfDate(dataThrough)
+  const measured = history.filter((p) => localCalendarDay(p.start_time_utc, p.utc_offset_s) <= through).at(-1)
+  const startS = measured?.best_efforts_s ?? entry.plan.assessment.estimate_s ?? null
+  if (startS === null) return weeks
+  return [{ date: dataThrough, valueS: startS }, ...weeks.filter((w) => calendarDayOfDate(w.date) > through)]
+}
+
+/**
+ * The best-efforts series' newest time: the newest history point's
+ * best-efforts value, null when that point has none. It is the row
+ * `/api/predictions` serves, so the header's "Predicted today", the
+ * trajectory's "Latest prediction" and the Trends table cannot name two
+ * numbers; an older point's value does not stand in.
+ */
+export function latestBestEffortsS(history: PredictionHistoryPoint[]): number | null {
+  return history.at(-1)?.best_efforts_s ?? null
+}
+
+/**
+ * Where a version's measured lines start: one smoothing window before its
+ * first week or its `data_through`, whichever is earlier (the race for a
+ * version with no weeks), so a plan that starts this week still shows the
+ * line it starts from.
+ */
+export function measuredFrom(version: PlanVersion): string {
+  const starts = version.weeks.map((w) => calendarDayOfDate(w.start_date))
+  const dataThrough = version.provenance.data_through ?? null
+  const from = Math.min(
+    starts.length === 0 ? calendarDayOfDate(version.goal.race_date) : Math.min(...starts),
+    dataThrough === null ? Infinity : calendarDayOfDate(dataThrough),
+  )
+  return isoDateOfDay(from - SMOOTHING_WINDOW_DAYS)
 }
 
 /** A checkpoint with the session it names resolved to that session's date and kind. */

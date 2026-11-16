@@ -66,10 +66,11 @@ function threePaces(): TrendSeries[] {
   ]
 }
 
-function renderChart(series: TrendSeries[] = threePaces()) {
+function renderChart(series: TrendSeries[] = threePaces(), invertY = false) {
   return render(
     <TrendChart
       series={series}
+      invertY={invertY}
       yLabel="bpm"
       formatValue={(v) => `${String(Math.round(v))} bpm`}
       emptyReason="No efficiency fit has been computed yet."
@@ -127,6 +128,13 @@ describe('TrendChart', () => {
     // uPlot breaks the line at a null unless told to span it; this chart
     // must never tell it to.
     for (const s of seriesOptions()) expect(s.spanGaps).not.toBe(true)
+  })
+
+  it('puts the smallest value at the top when invertY is set, and the largest otherwise', () => {
+    renderChart(threePaces(), true)
+    expect(lastInstance().opts.scales?.y?.dir).toBe(-1)
+    renderChart()
+    expect(lastInstance().opts.scales?.y?.dir).not.toBe(-1)
   })
 
   it('does not anchor the y axis at zero', () => {
@@ -343,6 +351,43 @@ describe('TrendChart', () => {
     expect(ctx.globalAlpha).toBe(1)
   })
 
+  it('carries the band across an instant only another series has, and breaks it at a null of its own', () => {
+    // A break in the subject line is a null at an instant the edges do not
+    // have, which reaches the hook as undefined: the band is drawn through
+    // it, as uPlot draws a line through an undefined.
+    renderChart([
+      { label: 'slow', colorVar: '--pace-1', edge: true, points: DAYS.map((t) => ({ t, v: 150 })) },
+      { label: 'median', colorVar: '--pace-2', points: DAYS.map((t) => ({ t, v: 155 })) },
+      { label: 'fast', colorVar: '--pace-3', edge: true, points: DAYS.map((t) => ({ t, v: 160 })) },
+    ])
+    const hook = lastInstance().opts.hooks?.drawAxes?.[0]
+    if (typeof hook !== 'function') throw new Error('no drawAxes hook for the envelope')
+    const draw = (lo: (number | null | undefined)[], hi: (number | null | undefined)[]) => {
+      const ctx = {
+        save: vi.fn(),
+        restore: vi.fn(),
+        beginPath: vi.fn(),
+        rect: vi.fn(),
+        clip: vi.fn(),
+        moveTo: vi.fn(),
+        lineTo: vi.fn(),
+        closePath: vi.fn(),
+        fill: vi.fn(),
+        fillStyle: '',
+        globalAlpha: 1,
+      }
+      hook({
+        ctx,
+        data: [[1, 2, 3, 4, 5], lo, [0, 0, 0, 0, 0], hi],
+        bbox: { left: 0, top: 0, width: 100, height: 100 },
+        valToPos: (v: number) => v,
+      } as unknown as uPlot)
+      return ctx.fill.mock.calls.length
+    }
+    expect(draw([150, 150, undefined, 150, 150], [160, 160, undefined, 160, 160])).toBe(1)
+    expect(draw([150, 150, null, 150, 150], [160, 160, null, 160, 160])).toBe(2)
+  })
+
   it('keys the band as a band and the subject as a line, so the legend names the mark to look for', () => {
     renderChart([
       { label: 'slow', colorVar: '--pace-1', edge: true, points: DAYS.map((t) => ({ t, v: 150 })) },
@@ -356,6 +401,68 @@ describe('TrendChart', () => {
     // Exactly one line swatch, and it belongs to the series in the middle.
     expect(swatches.filter((c) => c.includes('swatch') && !c.includes('Band')).length).toBe(1)
     expect(swatches.filter((c) => c.includes('swatchBand')).length).toBe(2)
+  })
+
+  it('keys a named band once, in its own tint, and fills it in that tint', () => {
+    render(
+      <TrendChart
+        series={threePaces().map((s, i) => (i === 1 ? s : { ...s, edge: true }))}
+        band={{ label: 'Spread', colorVar: '--series-2' }}
+        yLabel="bpm"
+        formatValue={(v) => `${String(Math.round(v))} bpm`}
+        emptyReason="none"
+        ariaLabel="Banded"
+      />,
+    )
+    const legend = screen.getByRole('list', { name: /legend/ })
+    const items = within(legend).getAllByRole('listitem')
+    // One entry for the two edges, where the first of them stood.
+    expect(items.map((li) => li.textContent)).toEqual(['Spread', '6:15/km'])
+    expect(items.filter((li) => li.querySelector('[class*="swatchBand"]') !== null).map((li) => li.textContent)).toEqual([
+      'Spread',
+    ])
+    const hook = lastInstance().opts.hooks?.drawAxes?.[0]
+    if (typeof hook !== 'function') throw new Error('no drawAxes hook for the envelope')
+    const ctx = {
+      save: vi.fn(),
+      restore: vi.fn(),
+      beginPath: vi.fn(),
+      rect: vi.fn(),
+      clip: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      closePath: vi.fn(),
+      fill: vi.fn(),
+      fillStyle: '',
+      globalAlpha: 1,
+    }
+    hook({
+      ctx,
+      data: [DAYS, DAYS.map(() => 150), DAYS.map(() => 155), DAYS.map(() => 160)],
+      bbox: { left: 0, top: 0, width: 100, height: 100 },
+      valToPos: (v: number) => v,
+    } as unknown as uPlot)
+    expect(ctx.fillStyle).toBe('--series-2')
+    expect(ctx.globalAlpha).toBeLessThan(0.5)
+  })
+
+  it('takes its y ladder from yScale when one is given', () => {
+    render(
+      <TrendChart
+        series={threePaces()}
+        yScale={(lo, hi) => ({ min: lo - 7, max: hi + 7, splits: [lo - 7, hi + 7] })}
+        yLabel="bpm"
+        formatValue={(v) => `${String(Math.round(v))} bpm`}
+        emptyReason="none"
+        ariaLabel="Laddered"
+      />,
+    )
+    const axis = lastInstance().opts.axes?.[1]
+    const splits = axis?.splits
+    if (typeof splits !== 'function') throw new Error('no y splits')
+    const ticks = splits({} as uPlot, 1, 0, 0, 0, 0) as number[]
+    expect(ticks).toHaveLength(2)
+    expect((ticks[1] ?? 0) - (ticks[0] ?? 0)).toBeGreaterThan(14)
   })
 
   it('draws no band when nothing is marked as an edge', () => {

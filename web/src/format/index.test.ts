@@ -52,7 +52,6 @@ import {
   loadLabel,
   perDayAsWeekly,
   formatPredictionBand,
-  formatPredictionSpan,
   formatSlope,
   formatVo2max,
   fastestRankLabel,
@@ -824,37 +823,16 @@ describe('effortTagLabel', () => {
   })
 })
 
-describe('formatPredictionSpan', () => {
-  it('spans the fastest and slowest of several predictions', () => {
-    expect(formatPredictionSpan([2854, 3487, 3073])).toBe('47:34 to\u00a058:07')
-  })
-
-  it('renders one time when every model agrees, rather than "x to x"', () => {
-    expect(formatPredictionSpan([1500, 1500])).toBe('25:00')
-  })
-
-  it('renders one time when the models agree to the displayed second, rather than "50:00 to 50:00"', () => {
-    // The real store's shape on 2026-10-06: both models anchor on a 10 km
-    // best and return it a fraction of a second apart at that distance.
-    expect(formatPredictionSpan([3000.1, 3000.3])).toBe('50:00')
-  })
-
-  it('is the no-value glyph when there is nothing to span', () => {
-    expect(formatPredictionSpan([])).toBe(NO_VALUE)
-    expect(formatPredictionSpan([Number.NaN])).toBe(NO_VALUE)
-  })
-})
-
 describe('raceModelLabel', () => {
   it('renders the analysis layer keys as words', () => {
-    expect(raceModelLabel('riegel')).toBe('Riegel')
+    expect(raceModelLabel('best_efforts')).toBe('Best efforts')
     expect(raceModelLabel('ordinary_runs')).toBe('Ordinary runs')
   })
 
   it('passes an unknown model through rather than throwing', () => {
     // The model set belongs to analysis/fitness.py; a model added there
     // must degrade to its key rather than break the table.
-    expect(raceModelLabel('pete_riegel_v2')).toBe('pete_riegel_v2')
+    expect(raceModelLabel('vdot_v2')).toBe('vdot_v2')
   })
 })
 

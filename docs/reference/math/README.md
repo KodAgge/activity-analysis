@@ -144,9 +144,10 @@ On the real history the heart-rate estimate sits at about 1.6 times VDOT, and th
 
 [vo2max.md](vo2max.md) derives both, sources every constant, states the regression inversion the heart-rate method rests on and bounds its bias against a properly directed published fit, shows by measurement why the reported series is a trailing 42-day mean, and compares both against Garmin's own VO2max.
 
-Race times come from two models over the best recent effort, Riegel and Cameron, reported as a range rather than a single number, plus a calibrated prediction from ordinary running that needs no maximal effort, carries its own band, and reads what typical training supports.
+Race times come from two series in VDOT, inverted to a time at any distance: one from the mean of the three best runs in the last 90 days, and one calibrated from the smoothed heart-rate estimate, which needs no maximal effort, carries its own band, and reads what typical training supports.
+Each is a daily value averaged over 42 days, which on the real history moves neither by more than 0.17 VDOT units in a day, and each run's row stores the value on its day, which is what the charts draw over time.
 
-[predictions.md](predictions.md) derives the three, records why a critical-speed fit over the per-distance bests was removed, measures why the ordinary-run prediction sits slower than the best efforts after a breakthrough run, and traces the error that propagates from an undetected jump in the recorded distance into a predicted race time.
+[predictions.md](predictions.md) derives the two series, measures them against the best run of the following four weeks and measures how far they lag a rise and a fall, records why Riegel, Cameron and a critical-speed fit were removed, measures why the ordinary-run prediction sits slower than the best efforts after a breakthrough run, and traces the error that propagates from an undetected jump in the recorded distance into a predicted race time.
 
 ### 9. Adjust speed for gradient
 

@@ -25,7 +25,6 @@ from activity_analysis.analysis.consistency import week_end, week_start
 from activity_analysis.analysis.fitness import (
     MIN_PREDICTION_DISTANCE_M,
     PREDICTION_WINDOW_DAYS,
-    prediction_anchor,
     race_predictions,
 )
 from activity_analysis.analysis.threshold import zone_boundaries
@@ -87,33 +86,11 @@ def _freshness(cur: duckdb.DuckDBPyConnection, today: date) -> dict[str, Any]:
 
 
 def _predictions(cur: duckdb.DuckDBPyConnection) -> dict[str, Any]:
-    """``/api/predictions``' payload, plus the run its best-effort models came from."""
-    efforts = queries.recent_eligible_efforts(cur, window_days=PREDICTION_WINDOW_DAYS)
+    """``/api/predictions``' payload, plus the best efforts behind it."""
     served = Predictions.model_validate(
-        race_predictions(
-            efforts, queries.latest_hr_vo2max_smoothed(cur, window_days=PREDICTION_WINDOW_DAYS)
-        )
+        race_predictions(*queries.latest_prediction_vdots(cur))
     ).model_dump(mode="json")
-    anchor = prediction_anchor(efforts)
-    source = (
-        None
-        if anchor is None
-        else queries.effort_source(
-            cur,
-            distance_key=str(anchor["distance_key"]),
-            elapsed_time_s=float(anchor["elapsed_time_s"]),
-        )
-    )
-    served["anchor"] = (
-        None
-        if anchor is None or source is None
-        else {
-            "distance_key": anchor["distance_key"],
-            "elapsed_time_s": anchor["elapsed_time_s"],
-            "activity_id": source["activity_id"],
-            "local_date": source["local_date"],
-        }
-    )
+    efforts = queries.recent_eligible_efforts(cur, window_days=PREDICTION_WINDOW_DAYS)
     served["recent_best_efforts"] = _recent_best_efforts(cur, efforts)
     return served
 

@@ -10,8 +10,10 @@ const PROPS: PlanOutlookProps = {
     { date: '2026-12-06', vdot: 45.5, garmin: 48 },
   ],
   measured: [
-    { date: '2026-11-14', vdot: 44 },
-    { date: '2026-11-28', vdot: 44.8 },
+    [
+      { date: '2026-11-14', vdot: 44 },
+      { date: '2026-11-28', vdot: 44.8 },
+    ],
   ],
   targetVdot: 46,
   garmin: [
@@ -40,7 +42,10 @@ describe('PlanOutlook', () => {
     const garmin = container.querySelector('[data-panel="garmin"]')
     expect(vdot?.querySelectorAll('[data-mark="target"]')).toHaveLength(1)
     expect(garmin?.querySelectorAll('[data-mark="target"]')).toHaveLength(0)
-    expect(vdot?.querySelectorAll('[data-mark="measured"]')).toHaveLength(2)
+    // The measured series is one line through its runs.
+    const measured = vdot?.querySelectorAll('[data-mark="measured"]')
+    expect(measured).toHaveLength(1)
+    expect(measured?.[0]?.getAttribute('points')?.split(' ')).toHaveLength(2)
     expect(vdot?.querySelectorAll('[data-mark="expected"]')).toHaveLength(1)
     expect(garmin?.querySelectorAll('[data-mark="expected"]')).toHaveLength(1)
     expect(garmin?.querySelectorAll('[data-mark="device"]')).toHaveLength(1)
@@ -61,7 +66,7 @@ describe('PlanOutlook', () => {
 
     const name = screen.getByRole('img', { name: /^VO2max outlook/ }).getAttribute('aria-label') ?? ''
     expect(name).toContain('expected VDOT 44.5 by 22 Nov')
-    expect(name).toContain('measured VDOT 44.0 on 14 Nov')
+    expect(name).toContain('measured VDOT 44.0 on 14 Nov to 44.8 on 28 Nov')
     expect(name).toContain('target VDOT 46.0')
     expect(name).toContain('expected Garmin VO2max 47.0 by 22 Nov, 47.0 by 29 Nov, 48.0 by 6 Dec')
     expect(name).toContain("Garmin's own 46.0 from 14 Nov, 47.0 from 20 Nov, 48.0 from 1 Dec")
@@ -69,6 +74,43 @@ describe('PlanOutlook', () => {
     const firstX = Number(line.split(' ')[0]?.split(',')[0])
     const garminRules = Array.from(garmin?.querySelectorAll('line[data-rule]') ?? [])
     expect(firstX).toBeCloseTo(Number(garminRules[0]?.getAttribute('x1')), 6)
+  })
+
+  it('states why nothing is measured while the history loads, beside its other notes', () => {
+    render(<PlanOutlook {...PROPS} measured={[]} measuredNote="Loading the measured predictions." />)
+    expect(screen.getByRole('status')).toHaveTextContent('Loading the measured predictions.')
+  })
+
+  it('puts the year on both end dates when the span crosses one', () => {
+    render(<PlanOutlook {...PROPS} measured={[[{ date: '2025-11-14', vdot: 44 }]]} />)
+    expect(screen.getByText('14 Nov 2025')).toBeInTheDocument()
+    expect(screen.getByText('6 Dec 2026')).toBeInTheDocument()
+  })
+
+  it('draws a lone measured run as a dot', () => {
+    const { container } = render(<PlanOutlook {...PROPS} measured={[[{ date: '2026-11-28', vdot: 44.8 }]]} />)
+    expect(container.querySelector('circle[data-mark="measured"]')).not.toBeNull()
+    expect(container.querySelector('polyline[data-mark="measured"]')).toBeNull()
+  })
+
+  it('draws each unbroken run of the measured series as its own line', () => {
+    const { container } = render(
+      <PlanOutlook
+        {...PROPS}
+        measured={[
+          [
+            { date: '2026-10-01', vdot: 43 },
+            { date: '2026-10-05', vdot: 43.2 },
+          ],
+          [
+            { date: '2026-11-20', vdot: 44.4 },
+            { date: '2026-11-28', vdot: 44.8 },
+          ],
+        ]}
+      />,
+    )
+    expect(container.querySelectorAll('polyline[data-mark="measured"]')).toHaveLength(2)
+    expect(screen.getByRole('img').getAttribute('aria-label')).toContain('measured VDOT 43.0 on 1 Oct to 44.8 on 28 Nov')
   })
 
   it('PlanOutlook says so when no version is stamped', () => {
@@ -83,7 +125,7 @@ describe('PlanOutlook', () => {
       'This version predates the VO2max outlook. No Garmin VO2max over this span, and this version expects none.',
     )
     expect(container.querySelector('[data-panel="garmin"]')).toBeNull()
-    expect(container.querySelectorAll('[data-mark="measured"]')).toHaveLength(2)
+    expect(container.querySelectorAll('[data-mark="measured"]')).toHaveLength(1)
   })
 
   it("labels Garmin's unrounded values to one decimal, a run of days by that label", () => {

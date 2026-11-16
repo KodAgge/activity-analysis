@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { NO_VALUE } from '../../format'
 import { PlanHeader } from './PlanHeader'
 import type { PlanVersionEntry, Session, WeekEntry } from './planMath'
 import { weekText } from './weekText'
@@ -48,8 +49,17 @@ const entry = {
 
 const TODAY = new Date(2026, 7, 23)
 
-function renderHeader(next: WeekEntry | null) {
-  return render(<PlanHeader entry={entry} goalStatus="active" result={null} week={next} today={TODAY} />)
+function renderHeader(next: WeekEntry | null, predictedTodayS: number | null = null) {
+  return render(
+    <PlanHeader
+      entry={entry}
+      goalStatus="active"
+      result={null}
+      week={next}
+      today={TODAY}
+      predictedTodayS={predictedTodayS}
+    />,
+  )
 }
 
 describe('PlanHeader week actions', () => {
@@ -77,7 +87,15 @@ describe('PlanHeader week actions', () => {
     const next: WeekEntry = { week: { ...week.week, sessions: [capped] }, sessions: [{ session: capped, phase: 'base' }] }
     const boundaries = [140, 155, 165, 175]
     render(
-      <PlanHeader entry={entry} goalStatus="active" result={null} week={next} today={TODAY} zoneBoundaries={boundaries} />,
+      <PlanHeader
+        entry={entry}
+        goalStatus="active"
+        result={null}
+        week={next}
+        today={TODAY}
+        predictedTodayS={null}
+        zoneBoundaries={boundaries}
+      />,
     )
     fireEvent.click(screen.getByRole('button', { name: 'Copy as text' }))
     await screen.findByRole('button', { name: 'Copied' })
@@ -115,6 +133,20 @@ describe('PlanHeader week actions', () => {
 })
 
 describe('PlanHeader estimate card', () => {
+  it('shows the newest best-efforts time as predicted today, beside Claude\'s estimate', () => {
+    renderHeader(week, 1490)
+    const card = screen.getByRole('heading', { level: 2, name: 'Estimated 5 km time' }).closest('section')
+    if (card === null) throw new Error('no estimate card')
+    expect(within(card).getByText('Predicted today, best efforts').nextSibling).toHaveTextContent('24:50')
+    expect(within(card).getByText("Claude's estimate").nextSibling).toHaveTextContent('24:40')
+    expect(card).not.toHaveTextContent(/ordinary/i)
+  })
+
+  it('states no time when the series has none', () => {
+    renderHeader(week, null)
+    expect(screen.getByText('Predicted today, best efforts').nextSibling).toHaveTextContent(NO_VALUE)
+  })
+
   it('says at its foot who wrote the version and from which runs', () => {
     renderHeader(week)
     const card = screen.getByRole('heading', { level: 2, name: 'Estimated 5 km time' }).closest('section')

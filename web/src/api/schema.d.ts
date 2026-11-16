@@ -297,6 +297,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/predictions/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Prediction History
+         * @description The prediction at ``distance_m`` after each run, from the stored VDOT series.
+         */
+        get: operations["prediction_history_api_predictions_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/progression/{distance_key}": {
         parameters: {
             query?: never;
@@ -922,6 +942,19 @@ export interface components {
             end?: components["schemas"]["LoadPoint"] | null;
         };
         /**
+         * ExpectedPredictionPoint
+         * @description The goal-distance time a week's ``expected_vdot`` implies, on its last day.
+         */
+        ExpectedPredictionPoint: {
+            /**
+             * Local Date
+             * Format: date
+             */
+            local_date: string;
+            /** Time S */
+            time_s: number;
+        };
+        /**
          * Fitness
          * @description The VO2max series, both methods, oldest first, and Garmin's own by day.
          */
@@ -1251,6 +1284,8 @@ export interface components {
              */
             status: "proposed" | "accepted" | "superseded" | "rejected" | "withdrawn";
             plan: components["schemas"]["PlanVersion"];
+            /** Expected Prediction */
+            expected_prediction: components["schemas"]["ExpectedPredictionPoint"][];
         };
         /**
          * Plans
@@ -1271,6 +1306,44 @@ export interface components {
             distance_m: number;
             /** Models */
             models: components["schemas"]["RaceModel"][];
+        };
+        /**
+         * PredictionHistory
+         * @description The prediction at one distance after each run, oldest first.
+         */
+        PredictionHistory: {
+            /** Distance M */
+            distance_m: number;
+            /** Points */
+            points: components["schemas"]["PredictionHistoryPoint"][];
+        };
+        /**
+         * PredictionHistoryPoint
+         * @description Both models' predicted time at one run, at the requested distance.
+         *
+         *     Either model may be null on its own, as on ``FitnessPoint``. The band
+         *     belongs to the ordinary-run model alone.
+         */
+        PredictionHistoryPoint: {
+            /** Activity Id */
+            activity_id: string;
+            /**
+             * Start Time Utc
+             * Format: date-time
+             */
+            start_time_utc: string;
+            /** Utc Offset S */
+            utc_offset_s: number | null;
+            /** Best Efforts Vdot */
+            best_efforts_vdot: number | null;
+            /** Best Efforts S */
+            best_efforts_s: number | null;
+            /** Ordinary Runs S */
+            ordinary_runs_s: number | null;
+            /** Ordinary Runs Low S */
+            ordinary_runs_low_s: number | null;
+            /** Ordinary Runs High S */
+            ordinary_runs_high_s: number | null;
         };
         /**
          * Predictions
@@ -2401,6 +2474,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Predictions"];
+                };
+            };
+        };
+    };
+    prediction_history_api_predictions_history_get: {
+        parameters: {
+            query: {
+                /** @description The race distance to predict, in metres. */
+                distance_m: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PredictionHistory"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

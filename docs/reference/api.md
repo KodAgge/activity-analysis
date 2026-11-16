@@ -86,7 +86,8 @@ Ingestion and `recompute` stay in the CLI.
 | `GET /api/fitness` | the smoothed VO2max series, both methods, with the raw per-activity points, and Garmin's own VO2max by day |
 | `GET /api/threshold` | the estimated lactate threshold heart rate now, with its zone edges |
 | `GET /api/training-load` | the daily and weekly TRIMP with fitness (`ctl`), fatigue (`atl`) and form, and each run's TRIMP, the rest and maximum heart rate it used, estimated zone seconds and heart rate histogram, within local dates |
-| `GET /api/predictions` | two race models as a range from the best recent effort, plus the calibrated prediction from ordinary runs with its band, or an explicit insufficient-data state |
+| `GET /api/predictions` | today's predicted time at each distance from the best-efforts series and from the ordinary-runs series with its band, or an explicit insufficient-data state |
+| `GET /api/predictions/history` | both predicted times, and the ordinary-runs band, at one distance after every run, oldest first |
 | `GET /api/progression/{distance_key}` | every effort at one distance with its eligibility and record status; 404 for a key the extractor does not know and for a distance with no efforts |
 | `GET /api/routes` | every recurring route: name, run count, median distance, first and last run, and its current record |
 | `GET /api/routes/{route_id}` | one route's runs in time order, each with speed, direction, eligibility, rank and record flag; 404 for an unknown id |
@@ -401,36 +402,46 @@ Filtering reads the local date through `LOCAL_DATE_SQL`, so a run belongs to the
 
 ### `GET /api/predictions`
 
-Every model's prediction at each of the `VDOT_DISTANCES_M` from a kilometre up - the same nine `vdot` reads, not all twenty-two the extractor knows - or an explicit statement of why there are none.
+Each prediction series' newest value as a time at each of the `VDOT_DISTANCES_M` from a kilometre up - the same nine `vdot` reads, not all twenty-two the extractor knows - or an explicit statement of why there are none.
 
-**The models are evaluated when asked rather than stored.**
-The derived layer declares no predictions table.
-The models are closed forms over a handful of numbers, every one of which is read from the derived layer under the eligibility rule `/api/records` uses, and "recent" is measured against the history, which a stored row would freeze at recompute time.
-The maths is `analysis.fitness.race_predictions`; the router only validates what it returns.
-This is the endpoint that evaluates a model on read, and it computes nothing that is not a function of stored numbers.
+**The series are stored; the times are not.**
+`fitness_series` carries `best_efforts_vdot` and `ordinary_runs_vdot` on every run's row, written by `recompute` (`docs/reference/derived-layer.md`), and the endpoint reads the newest row with either, `queries.latest_prediction_vdots`.
+`analysis.fitness.race_predictions` inverts each VDOT to a time with `time_for_vdot`; the router only validates what it returns.
+The inversion is a closed form with no input of its own, so it cannot disagree with the stored layer, and a time per distance stored at recompute could not serve a plan's goal at an arbitrary distance.
 `/api/threshold` is the only other route that computes on read, applying the fixed zone fractions to the stored threshold.
 
-The window is the 90 days ending at **the most recent run in the store**, not today, so the answer is a function of the store alone and an athlete who stopped running still sees the prediction their last block of training supports.
-Inside it, the best eligible effort at each of those distances feeds the best-effort models, and the latest `hr_vo2max_smoothed` feeds the ordinary-run one.
+The series' 90-day windows end on each run's own day, so the newest row's end at **the most recent run in the store**, not today: the answer is a function of the store alone, and an athlete who stopped running still sees the prediction their last block of training supports.
 
-Each `Prediction` carries a list of `RaceModel`, each named by `model` and `source`:
+Each `Prediction` carries a list of `RaceModel`, each named by `model`, with `source` the same name:
 
-| model | source | how |
-| --- | --- | --- |
-| `riegel` | `best_efforts` | from the recent eligible effort with the highest VDOT |
-| `cameron` | `best_efforts` | the same effort |
-| `ordinary_runs` | `ordinary_runs` | the calibrated prediction from the smoothed heart-rate VO2max, with `low_s` and `high_s` |
+| model | how |
+| --- | --- |
+| `best_efforts` | `best_efforts_vdot`: the mean VDOT of the three best runs in the 90 days up to each day, averaged over 42 days |
+| `ordinary_runs` | `ordinary_runs_vdot`: the calibrated smoothed heart-rate VO2max, averaged over 42 days, with `low_s` and `high_s` |
 
-The two best-effort models are read together as a range and carry no band of their own.
+`best_efforts` carries no band, `low_s` and `high_s` null.
 **The ordinary-run prediction always carries `low_s` and `high_s`**; the response model refuses one without them, because a prediction from runs that were never races is about 5% wide on a 5 km and is misleading without its band.
-Where a recent eligible best effort exists, the best-effort models are the better prediction; this one reads what typical training supports, so after a breakthrough effort it sits slower than they do by design.
+Where a recent eligible best effort exists, the best-efforts prediction is the better one; the ordinary-runs one reads what typical training supports, so after a breakthrough effort it sits slower by design.
 
-`insufficient_data` is true whenever either source could not produce a model, and `reason` says which and why, so an absence in `models` is never silent.
+`insufficient_data` is true whenever either series has no value on the newest row, and `reason` says which and why, so an absence in `models` is never silent.
 A model present at one distance is present at all of them.
-There is no critical-speed model: it was removed on 2026-10-06, and `predictions.md` records why.
-On a store with no eligible effort in the window and no smoothed estimate, `items` is empty and `reason` says so.
-Efforts under a kilometre are neither a source nor a target: the Daniels and Riegel curves were fitted to race distances, and a 400 m window is short enough that one bad second dominates it.
-`docs/reference/math/predictions.md` derives the models, measures the ordinary-run prediction's lag after a breakthrough effort, and records the removed critical-speed fit.
+There is no Riegel, Cameron or critical-speed model: the first two were removed on 2026-11-16 and the third on 2026-10-06, and `predictions.md` records why.
+On a store with neither value, `items` is empty and `reason` says so.
+Efforts under a kilometre are neither a source nor a target: the Daniels curve was fitted to race distances, and a 400 m window is short enough that one bad second dominates it.
+`docs/reference/math/predictions.md` derives the two series, measures their lag and the ordinary-run prediction's gap after a breakthrough effort, and records the removed models.
+
+### `GET /api/predictions/history`
+
+The prediction at one distance after each run, from the same stored columns, so its last point is what `/api/predictions` serves at that distance.
+
+`distance_m` is required and in metres, from 1000 to 100 000 (`MAX_HISTORY_DISTANCE_M`); outside that, `inf` and `nan` included, the request is 422.
+It is any distance in that range, not only one of `VDOT_DISTANCES_M`, because a plan's goal can be any distance; Progression asks at the progression payload's `distance_m` and Trends at a prediction row's.
+
+The response is `distance_m` and `points`, oldest first, one per `fitness_series` row with either VDOT, `queries.prediction_vdot_history`.
+Each point has `activity_id`, `start_time_utc`, `utc_offset_s`, `best_efforts_vdot`, `best_efforts_s`, `ordinary_runs_s`, `ordinary_runs_low_s` and `ordinary_runs_high_s`.
+Either model may be null on its own, and the band is null exactly when `ordinary_runs_s` is.
+`utc_offset_s` is the run's own, joined from `activities`, so a view dates each point on the athlete's local day, as "The contract" above requires.
+`best_efforts_vdot` is served beside its time for the Plan view's VDOT outlook, which draws the same series in VDOT.
 
 ### `GET /api/progression/{distance_key}`
 
@@ -547,7 +558,8 @@ The list reads every goal's index, its first version, for the order, and the ver
 
 ### `GET /api/plans/{goal_id}`
 
-One goal: `goal_id`, its `status`, and `versions`, oldest first, each a `number`, a `status` and `plan`, the stored version whole.
+One goal: `goal_id`, its `status`, and `versions`, oldest first, each a `number`, a `status`, `plan`, the stored version whole, and `expected_prediction`.
+`expected_prediction` is one `{local_date, time_s}` per week with an `expected_vdot`, dated the week's Sunday or the race date if that comes first, with `time_s` the goal distance's time at that VDOT from `time_for_vdot`, the inverse `/api/predictions` uses; it is `[]` for a version with no `expected_vdot`, and nothing is stored.
 `plan` is the draft Claude wrote plus the `provenance` `propose` stamped on it, with every field as `src/activity_analysis/plan/models.py` defines it: speeds in m/s, distances in metres, durations in seconds, heart rates in bpm, and dates as the athlete's local calendar dates.
 Withdrawn and rejected versions are served too; the view decides which to draw.
 

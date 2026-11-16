@@ -1,3 +1,5 @@
+import { dayMonthLabel, yearLabel } from '../format'
+
 /**
  * The scales behind the Plan view's two SVG charts, `PlanVolume` and
  * `PlanTrajectory`, kept apart from them for the reason
@@ -236,24 +238,29 @@ export function volumeSlots(count: number, left: number, right: number): VolumeS
 const FALLBACK_SPAN_DAYS = 7
 
 /**
- * The trajectory's x domain in day numbers: from the first version, or an
- * earlier checkpoint, to the race. A version written after the race, as
- * the one recording the result is, stretches the axis to reach it rather
- * than leaving the plot. A goal with nothing dated but its race shows the
- * week before it.
+ * The trajectory's x domain in day numbers: from the first point, or an
+ * earlier checkpoint, to the race, which the chart draws nothing after. A
+ * goal with nothing dated before its race shows the week before it.
  */
 export function trajectoryDays(pointDays: number[], checkpointDays: number[], raceDay: number): [number, number] {
-  const days = [raceDay, ...pointDays, ...checkpointDays]
-  const start = Math.min(...days)
-  const end = Math.max(...days)
-  return [start < end ? start : end - FALLBACK_SPAN_DAYS, end]
+  const start = Math.min(raceDay, ...pointDays, ...checkpointDays)
+  return [start < raceDay ? start : raceDay - FALLBACK_SPAN_DAYS, raceDay]
 }
 
 /**
- * Which point labels to draw, given each label's x in drawing order: the
- * last always, since it is the latest version, then walking back, any
- * label at least `minGapPx` left of the last one kept. Two versions
- * written a day apart would otherwise print one label over the other.
+ * A plan chart's two end dates, `5 Feb` and `13 Mar`, each with its year
+ * when the span crosses one, `14 Nov 2026` and `5 Dec 2027`, since a
+ * marathon block can run longer than a year.
+ */
+export function spanEndLabels(firstDay: number, lastDay: number): [string, string] {
+  if (yearLabel(firstDay) === yearLabel(lastDay)) return [dayMonthLabel(firstDay), dayMonthLabel(lastDay)]
+  return [`${dayMonthLabel(firstDay)} ${yearLabel(firstDay)}`, `${dayMonthLabel(lastDay)} ${yearLabel(lastDay)}`]
+}
+
+/**
+ * Which labels to draw, given each label's x in drawing order: the last
+ * always, then walking back, any label at least `minGapPx` left of the
+ * last one kept, so no two print one over the other.
  */
 export function thinLabels(xs: number[], minGapPx: number): boolean[] {
   const keep = xs.map(() => false)
@@ -266,50 +273,6 @@ export function thinLabels(xs: number[], minGapPx: number): boolean[] {
     }
   }
   return keep
-}
-
-/** Where a point's label sits: which way it reads from the point, and above or below it. */
-export interface LabelPlacement {
-  anchor: 'start' | 'end'
-  below: boolean
-}
-
-/**
- * How far below its point a label's baseline sits. `PlanTrajectory`
- * draws at this offset; it is here because the bottom check below reads
- * it too.
- */
-export const POINT_LABEL_BELOW_DY = 17
-/** The clear space a label below its point keeps above the plot's bottom rule. */
-const BOTTOM_CLEARANCE_PX = 4
-
-/**
- * A label for each point of the joined trajectory, kept off the line.
- *
- * A point in the left half reads rightward from it (`start`) and one in
- * the right half leftward (`end`), so no label hangs past the plot. The
- * label then takes the side of the point the segment on that side does
- * not pass through: below when that segment climbs away from the point,
- * above otherwise. A point with no segment on that side is labelled above.
- * Screen y grows downward, so a faster point has the smaller y.
- *
- * A point too near `bottom`, the slowest rule, to fit a line of text
- * under it is labelled above whatever the line does: below, the label
- * would sit on the rule and against the checkpoint strip under it, where
- * the halo can keep it legible over the trajectory but not apart from the
- * strip's labels.
- */
-export function pointLabelPlacement(
-  points: { cx: number; cy: number }[],
-  middle: number,
-  bottom: number,
-): LabelPlacement[] {
-  return points.map((p, i) => {
-    const anchor = p.cx < middle ? 'start' : 'end'
-    const neighbour = anchor === 'start' ? points[i + 1] : points[i - 1]
-    const roomBelow = p.cy + POINT_LABEL_BELOW_DY <= bottom - BOTTOM_CLEARANCE_PX
-    return { anchor, below: roomBelow && neighbour !== undefined && neighbour.cy < p.cy }
-  })
 }
 
 /**

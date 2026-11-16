@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 import numpy as np
@@ -224,48 +225,6 @@ def smooth_series(when: pd.Series, value: pd.Series) -> pd.Series:
     return trailing_mean(when, value, window_days=SMOOTHING_WINDOW_DAYS)
 
 
-#: Riegel's endurance exponent. Above 1 because pace decays with distance;
-#: 1.06 is his fit to observed performances across many events. Known to be
-#: optimistic at the marathon end, which is why it is not reported alone.
-RIEGEL_EXPONENT = 1.06
-
-#: Cameron's coefficients were fitted in miles, so the conversion happens
-#: here, at the boundary, and nothing imperial is stored.
-_METRES_PER_MILE = 1609.344
-
-
-def riegel(known_distance_m: float, known_time_s: float, target_distance_m: float) -> float:
-    """``T2 = T1 * (D2 / D1) ^ 1.06``."""
-    if known_distance_m <= 0.0 or known_time_s <= 0.0 or target_distance_m <= 0.0:
-        return float("nan")
-    return float(known_time_s * (target_distance_m / known_distance_m) ** RIEGEL_EXPONENT)
-
-
-def cameron(known_distance_m: float, known_time_s: float, target_distance_m: float) -> float:
-    """Cameron's model, which fits observed performance better than Riegel at
-    the long end.
-
-    Both distances are converted to a fatigue factor and the known pace is
-    scaled by their ratio::
-
-        f(d) = 13.49681 - 0.048865 d + 2.438936 / d^0.7905
-        pace2 = pace1 * f(d1) / f(d2)
-
-    with ``d`` in miles, which is the unit the coefficients were fitted in.
-    Converting here rather than storing miles anywhere keeps the SI rule.
-    """
-    if known_distance_m <= 0.0 or known_time_s <= 0.0 or target_distance_m <= 0.0:
-        return float("nan")
-
-    def factor(distance_m: float) -> float:
-        miles = distance_m / _METRES_PER_MILE
-        return float(13.49681 - 0.048865 * miles + 2.438936 / (miles**0.7905))
-
-    known_pace = known_time_s / known_distance_m
-    target_pace = known_pace * factor(known_distance_m) / factor(target_distance_m)
-    return target_pace * target_distance_m
-
-
 #: Calibration of the heart-rate VO2max onto the VDOT scale, fitted on
 #: 2026-11-14 against the ``fitness_series`` this module writes, so on the
 #: shipped ``hr_vo2max``. One least-squares regression of the VDOT of the
@@ -303,9 +262,9 @@ class OrdinaryRunPrediction:
     The band is one residual standard deviation either side, converted from
     VDOT units into times. It is wide - about 5% on a 25 minute 5 km - and
     every surface showing it must show the band too. Where a recent eligible
-    best effort exists, the best-effort models are the better prediction;
+    best effort exists, the best-efforts series is the better prediction;
     this reads what typical training supports, so after a breakthrough
-    effort it sits slower than they do.
+    effort it sits slower than it does.
     """
 
     predicted_s: float
@@ -314,27 +273,88 @@ class OrdinaryRunPrediction:
 
 
 def predict_from_ordinary_run(
-    hr_vo2max_value: float, distance_m: float
+    calibrated_vdot: float, distance_m: float
 ) -> OrdinaryRunPrediction | None:
-    """Predict a race time from a heart-rate VO2max estimate.
+    """Predict a race time from a calibrated ordinary-run VDOT.
 
-    ``None`` when there is no estimate to work from.
+    ``calibrated_vdot`` is the series' ``ordinary_runs_vdot``, which already
+    carries the calibration of ``_prediction_vdots``; this adds the band.
+    ``None`` when there is no finite VDOT to work from.
 
     The band is computed by inverting at ``vdot +/- residual`` rather than by
     adding seconds to the prediction, because time is a nonlinear function of
     VDOT and a symmetric band in one is asymmetric in the other. A higher
-    VDOT is a lower time, so ``low_s`` comes from ``centre + residual``.
+    VDOT is a lower time, so ``low_s`` comes from ``vdot + residual``.
     """
-    if not math.isfinite(hr_vo2max_value) or distance_m <= 0.0:
-        return None
-    centre = ORDINARY_RUN_CALIBRATION_SLOPE * hr_vo2max_value + ORDINARY_RUN_CALIBRATION_INTERCEPT
-    if centre <= 0.0:
+    if not math.isfinite(calibrated_vdot) or calibrated_vdot <= 0.0 or distance_m <= 0.0:
         return None
     return OrdinaryRunPrediction(
-        predicted_s=time_for_vdot(distance_m, centre),
-        low_s=time_for_vdot(distance_m, centre + ORDINARY_RUN_RESIDUAL_VDOT),
-        high_s=time_for_vdot(distance_m, centre - ORDINARY_RUN_RESIDUAL_VDOT),
+        predicted_s=time_for_vdot(distance_m, calibrated_vdot),
+        low_s=time_for_vdot(distance_m, calibrated_vdot + ORDINARY_RUN_RESIDUAL_VDOT),
+        high_s=time_for_vdot(distance_m, calibrated_vdot - ORDINARY_RUN_RESIDUAL_VDOT),
     )
+
+
+#: How many runs the best-efforts series averages. Measured on the real store,
+#: the single best run in 90 days sat 1.49 VDOT units above the best run of the
+#: following four weeks on average and the mean of three 0.35, with half its
+#: largest daily move; docs/reference/math/predictions.md, "What the
+#: measurement showed", has the table.
+PREDICTION_TOP_RUNS = 3
+
+
+def _prediction_vdots(rows: pd.DataFrame, run_vdot_1k: pd.Series) -> pd.DataFrame:
+    """The two smoothed prediction VDOTs on each row's local day.
+
+    ``rows`` carries ``local_date`` and ``hr_vo2max_smoothed``; ``run_vdot_1k``
+    is each row's highest VDOT over its eligible efforts of at least
+    ``MIN_PREDICTION_DISTANCE_M``, NaN where it has none. Both series are
+    computed per calendar day over ``PREDICTION_WINDOW_DAYS``, then averaged
+    over ``SMOOTHING_WINDOW_DAYS`` days, so a day with no run still weighs in
+    and a run's value is not counted again for each run that shares its week.
+    The result is aligned to ``rows``' index.
+    """
+    dates = pd.to_datetime(rows["local_date"])
+    days = pd.date_range(dates.min(), dates.max(), freq="D")
+    top = run_vdot_1k.to_numpy(dtype=float)
+    hr = rows["hr_vo2max_smoothed"].to_numpy(dtype=float)
+    best_raw = np.full(len(days), np.nan)
+    ordinary_raw = np.full(len(days), np.nan)
+    for index, day in enumerate(days):
+        inside = (
+            (dates > day - pd.Timedelta(days=PREDICTION_WINDOW_DAYS)) & (dates <= day)
+        ).to_numpy()
+        values = np.sort(top[inside & np.isfinite(top)])[::-1][:PREDICTION_TOP_RUNS]
+        if values.size:
+            best_raw[index] = values.mean()
+        usable = np.flatnonzero(inside & np.isfinite(hr))
+        if usable.size:
+            ordinary_raw[index] = (
+                ORDINARY_RUN_CALIBRATION_SLOPE * hr[usable[-1]] + ORDINARY_RUN_CALIBRATION_INTERCEPT
+            )
+    when = pd.Series(days)
+    per_day = pd.DataFrame(
+        {
+            "best_efforts_vdot": trailing_mean(
+                when, pd.Series(best_raw), window_days=SMOOTHING_WINDOW_DAYS
+            ).to_numpy(),
+            "ordinary_runs_vdot": trailing_mean(
+                when, pd.Series(ordinary_raw), window_days=SMOOTHING_WINDOW_DAYS
+            ).to_numpy(),
+        },
+        index=days,
+    )
+    return per_day.reindex(dates).set_axis(rows.index)
+
+
+def local_date(start: pd.Timestamp, utc_offset_s: Any) -> date:
+    """The run's calendar day where it was run, as ``queries.LOCAL_DATE_SQL`` has it.
+
+    A run with no recorded offset, which is every GPX, is read in UTC there
+    too, so the two agree on which day its load falls.
+    """
+    offset = 0 if utc_offset_s is None or pd.isna(utc_offset_s) else int(utc_offset_s)
+    return (start + pd.Timedelta(seconds=offset)).date()
 
 
 def fitness_rows(
@@ -376,10 +396,10 @@ def fitness_rows(
     means not known and is dropped like a known jump, the rule the records
     list and the ``pr`` tag already apply.
 
-    No distance floor is applied here, unlike ``race_predictions``, which
-    refuses efforts under ``MIN_PREDICTION_DISTANCE_M``. A prediction
-    extrapolates from one anchor, so a noisy 400 m window would propagate
-    into every predicted time; the series shows each raw per-activity point
+    No distance floor is applied to ``vdot``, unlike the prediction series,
+    which takes each run's best over efforts of at least
+    ``MIN_PREDICTION_DISTANCE_M``. A noisy 400 m window there would be a third
+    of every predicted time's input; ``vdot``'s series shows each raw point
     beneath a 42-day mean and names its distance in ``vdot_distance_key``,
     so a consumer can exclude the 400 m points without a recompute. Should
     they prove noisy, applying the same floor here is a one-constant change.
@@ -403,12 +423,19 @@ def fitness_rows(
         estimate = hr_vo2max(speed, hr, max_hr) if speed.size else float("nan")
 
         best_vdot, best_key = float("nan"), None
+        best_1k = float("nan")
         mine = efforts_by_activity.get(activity_id)
         if mine is not None:
             for _, effort in mine.iterrows():
                 candidate = vdot(float(effort["distance_m"]), float(effort["elapsed_time_s"]))
                 if math.isfinite(candidate) and (math.isnan(best_vdot) or candidate > best_vdot):
                     best_vdot, best_key = candidate, str(effort["distance_key"])
+                if (
+                    float(effort["distance_m"]) >= MIN_PREDICTION_DISTANCE_M
+                    and math.isfinite(candidate)
+                    and (math.isnan(best_1k) or candidate > best_1k)
+                ):
+                    best_1k = candidate
 
         if math.isnan(estimate) and math.isnan(best_vdot):
             continue
@@ -420,6 +447,8 @@ def fitness_rows(
                 "vdot": best_vdot,
                 "vdot_distance_key": best_key,
                 "qualifying_segments": qualifying_segments(speed, hr, max_hr),
+                "run_vdot_1k": best_1k,
+                "local_date": local_date(activity["start_time_utc"], activity.get("utc_offset_s")),
             }
         )
     frame = pd.DataFrame(rows)
@@ -428,7 +457,10 @@ def fitness_rows(
     frame = frame.sort_values("start_time_utc", kind="stable").reset_index(drop=True)
     frame["hr_vo2max_smoothed"] = smooth_series(frame["start_time_utc"], frame["hr_vo2max"])
     frame["vdot_smoothed"] = smooth_series(frame["start_time_utc"], frame["vdot"])
-    return frame
+    frame[["best_efforts_vdot", "ordinary_runs_vdot"]] = _prediction_vdots(
+        frame, frame["run_vdot_1k"]
+    )
+    return frame.drop(columns=["run_vdot_1k", "local_date"])
 
 
 #: How far back "recent" reaches for a race prediction, measured from the
@@ -443,9 +475,9 @@ PREDICTION_WINDOW_DAYS = 90
 
 #: The shortest distance a prediction is made from or for. The Daniels
 #: percentage curve exceeds 1.0 below about two minutes and his tables start
-#: at 1500 m; Riegel's exponent was fitted to race distances; and a 400 m
-#: window is short enough that one bad second dominates it, which is why the
-#: five fastest 400 m efforts on the real store all carry ``contains_jump``.
+#: at 1500 m, and a 400 m window is short enough that one bad second dominates
+#: it, which is why the five fastest 400 m efforts on the real store all carry
+#: ``contains_jump``.
 MIN_PREDICTION_DISTANCE_M = 1000.0
 
 
@@ -457,74 +489,40 @@ def _race_model(
         "predicted_time_s": predicted_s,
         "low_s": low_s,
         "high_s": high_s,
-        "source": "ordinary_runs" if model == "ordinary_runs" else "best_efforts",
+        "source": model,
     }
 
 
-def prediction_anchor(recent_efforts: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """The effort both best-effort race models extrapolate from, or ``None``.
-
-    The recent eligible effort with the highest VDOT, because that is the
-    athlete's best recent performance under a scale that puts every distance
-    on one footing. Only efforts of at least ``MIN_PREDICTION_DISTANCE_M``
-    with a positive time count. Separate from ``race_predictions`` so the
-    training plan's context can name the effort a prediction came from by
-    the same rule, rather than by a copy of it that could drift.
-    """
-    usable = [
-        effort
-        for effort in recent_efforts
-        if float(effort["distance_m"]) >= MIN_PREDICTION_DISTANCE_M
-        and float(effort["elapsed_time_s"]) > 0.0
-    ]
-    if not usable:
-        return None
-    return max(usable, key=lambda e: vdot(float(e["distance_m"]), float(e["elapsed_time_s"])))
-
-
 def race_predictions(
-    recent_efforts: list[dict[str, Any]], hr_vo2max_smoothed: float | None
+    best_efforts_vdot: float | None, ordinary_runs_vdot: float | None
 ) -> dict[str, object]:
-    """Every model's prediction at each of ``VDOT_DISTANCES_M``, or why there are none.
+    """Every model's prediction at each distance of at least 1 km, or why there are none.
 
-    The nine the project started with rather than every standard distance the
-    extractor knows, for the reason ``VDOT_DISTANCES_M`` records: the
-    candidate set is a modelling choice here and a display one in the records
-    ladder, so adding a rung to the ladder must not move a predicted time.
+    The two arguments are the newest ``fitness_series`` values of
+    ``best_efforts_vdot`` and ``ordinary_runs_vdot``, or ``None``. Each is
+    inverted to a time with ``time_for_vdot`` at every distance of
+    ``VDOT_DISTANCES_M`` from ``MIN_PREDICTION_DISTANCE_M`` up, for the reason
+    ``VDOT_DISTANCES_M`` records: the candidate set is a modelling choice here
+    and a display one in the records ladder, so adding a rung to the ladder
+    must not move a predicted time. The ordinary-run model carries a band of
+    one residual SD either side; the best-efforts model has none.
+    Returns the shape of ``api.models.Predictions`` as plain containers, so
+    the router only validates.
 
-    ``recent_efforts`` is the best eligible effort per distance inside the
-    prediction window, as ``api.queries.recent_eligible_efforts`` supplies
-    it, already filtered to those nine; ``hr_vo2max_smoothed`` is the latest
-    reported heart-rate estimate in the same window, or ``None``. Returns the
-    shape of ``api.models.Predictions`` as plain containers, so the router
-    only validates.
-
-    Both best-effort models are anchored on one effort,
-    ``prediction_anchor``'s. The calibrated ordinary-run prediction stands
-    beside them with its band.
-
-    No model is fitted across the per-distance bests. Critical speed was, and
-    it was removed on 2026-10-06: the window's bests are windows inside
-    training runs rather than races, the longest of them an easy long run
-    that set the fit's slope, and it predicted a 10 km 18% slower than one
-    the window holds. ``docs/reference/math/predictions.md`` has the measurement.
-
-    ``insufficient_data`` is true whenever either source could not produce a
-    model, and ``reason`` says which and why, so an absence in ``models`` is
-    never silent.
+    ``insufficient_data`` is true whenever either series could not produce a
+    value, and ``reason`` says which, so an absence in ``models`` is never
+    silent.
     """
-    estimate = float("nan") if hr_vo2max_smoothed is None else float(hr_vo2max_smoothed)
+    best = _finite(best_efforts_vdot)
+    ordinary = _finite(ordinary_runs_vdot)
     missing: list[str] = []
-
-    anchor = prediction_anchor(recent_efforts)
-    if anchor is None:
+    if best is None:
         missing.append(
             "no eligible best effort of at least 1 km in the last "
-            f"{PREDICTION_WINDOW_DAYS} days of the history, so the best-effort models "
-            "have nothing to predict from"
+            f"{PREDICTION_WINDOW_DAYS} days of the history, so there is no "
+            "prediction from best efforts"
         )
-
-    if not math.isfinite(estimate):
+    if ordinary is None:
         missing.append(
             "no heart-rate VO2max estimate in the window, so there is no prediction "
             "from ordinary runs"
@@ -535,18 +533,16 @@ def race_predictions(
         if distance_m < MIN_PREDICTION_DISTANCE_M:
             continue
         models: list[dict[str, object]] = []
-        if anchor is not None:
-            known_d, known_t = float(anchor["distance_m"]), float(anchor["elapsed_time_s"])
-            models.append(_race_model("riegel", riegel(known_d, known_t, distance_m)))
-            models.append(_race_model("cameron", cameron(known_d, known_t, distance_m)))
-        ordinary = predict_from_ordinary_run(estimate, distance_m)
-        if ordinary is not None:
+        if best is not None:
+            models.append(_race_model("best_efforts", time_for_vdot(distance_m, best)))
+        prediction = None if ordinary is None else predict_from_ordinary_run(ordinary, distance_m)
+        if prediction is not None:
             models.append(
                 _race_model(
                     "ordinary_runs",
-                    ordinary.predicted_s,
-                    low_s=ordinary.low_s,
-                    high_s=ordinary.high_s,
+                    prediction.predicted_s,
+                    low_s=prediction.low_s,
+                    high_s=prediction.high_s,
                 )
             )
         if models:
@@ -557,3 +553,7 @@ def race_predictions(
         "insufficient_data": bool(missing),
         "reason": "; ".join(missing) if missing else None,
     }
+
+
+def _finite(value: float | None) -> float | None:
+    return None if value is None or not math.isfinite(value) else float(value)

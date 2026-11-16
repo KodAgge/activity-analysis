@@ -42,7 +42,7 @@ def context() -> dict[str, Any]:
                     "distance_m": 5000.0,
                     "models": [
                         {
-                            "model": "riegel",
+                            "model": "best_efforts",
                             "predicted_time_s": 1400.0,
                             "low_s": None,
                             "high_s": None,
@@ -91,7 +91,7 @@ def test_proposing_a_new_goal_creates_it_with_v1_proposed(
         SnapshotPrediction(
             distance_key="5k",
             distance_m=5000.0,
-            model="riegel",
+            model="best_efforts",
             predicted_time_s=1400.0,
             low_s=None,
             high_s=None,

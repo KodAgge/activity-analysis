@@ -13,6 +13,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from activity_analysis.plan.models import (
+    EXPECTED_VDOT_START_TOLERANCE,
     RUNNING_KINDS,
     ZONE_MINUTES_TOLERANCE,
     PlanDraft,
@@ -57,11 +58,39 @@ def _garmin_vo2max_known(context: Mapping[str, Any]) -> bool:
     return isinstance(fitness_now, Mapping) and fitness_now.get("garmin_vo2max") is not None
 
 
+def _start_problems(
+    draft: PlanDraft, data_through: date | None, context: Mapping[str, Any]
+) -> list[str]:
+    """Check 21: the curve starts within reach of the best-efforts series.
+
+    Skipped when the context holds no series value, since the curve then
+    starts from Claude's estimate.
+    """
+    fitness_now = context.get("fitness_now")
+    start = fitness_now.get("best_efforts_vdot") if isinstance(fitness_now, Mapping) else None
+    if start is None:
+        return []
+    for week in draft.weeks:
+        if data_through is not None and week.start_date + timedelta(days=6) <= data_through:
+            continue
+        if week.expected_vdot is not None and (
+            abs(week.expected_vdot - start) > EXPECTED_VDOT_START_TOLERANCE
+        ):
+            return [
+                f"week of {week.start_date} expects VDOT {week.expected_vdot:.1f}, more than "
+                f"{EXPECTED_VDOT_START_TOLERANCE:g} from the best-efforts series' "
+                f"{start:.1f} at data_through; the curve starts there"
+            ]
+        return []
+    return []
+
+
 def _detail_problems(
     draft: PlanDraft, data_through: date | None, context: Mapping[str, Any]
 ) -> list[str]:
-    """Checks 16 to 20: a week that has not ended carries the load and VO2max outlook."""
+    """Checks 16 to 21: a week that has not ended carries the load and VO2max outlook."""
     problems: list[str] = []
+    problems.extend(_start_problems(draft, data_through, context))
     # A store without Garmin's VO2max, such as a Strava-only one, has no value for
     # the expected curve to start from, so check 16 does not ask for one.
     fields = ["planned_zone_minutes", "expected_vdot"]

@@ -1,7 +1,14 @@
 import type { components } from '../../api/schema'
-import { calendarDayOfDate, calendarDayOfLocalDate, dateOfCalendarDay, dayMonthLabel, zoneOf } from '../../format'
-import type { PlanDetail, PlanVersion } from './planMath'
-import { shownVersion } from './planMath'
+import {
+  calendarDayOfDate,
+  calendarDayOfLocalDate,
+  dateOfCalendarDay,
+  dayMonthLabel,
+  localCalendarDay,
+  zoneOf,
+} from '../../format'
+import { breakAtGaps, splitAtNulls } from '../../charts/progressionMath'
+import type { PlanVersion, PredictionHistoryPoint } from './planMath'
 
 /**
  * The arithmetic behind the Plan view's TRIMP load, zone mix, ceiling and
@@ -168,38 +175,37 @@ function isoOfDay(day: number): string {
 
 /**
  * The expected VO2max outlook and the measured one. Expected: each week
- * of `version` (default the shown one) that carries a stamp, at its
- * Sunday, the last week at the race date. Measured: each version not
- * withdrawn or rejected that carries `estimate_vdot`, at its
- * `data_through`.
+ * of `version` that carries a stamp, at its Sunday, the last week at the
+ * race date. Measured: the best-efforts series from `measuredFrom`
+ * (`planMath.measuredFrom`) to the race day,
+ * one point per run on the run's local day, the line the trajectory draws
+ * as a time, in runs broken where a run has no value or runs are more than
+ * six weeks apart, as the trajectory breaks it.
  */
 export function outlookSeries(
-  detail: PlanDetail,
-  version?: PlanVersion,
+  version: PlanVersion,
+  history: PredictionHistoryPoint[],
+  measuredFrom: string,
 ): {
   expected: { date: string; vdot: number; garmin: number | null }[]
-  measured: { date: string; vdot: number }[]
+  measured: { date: string; vdot: number }[][]
   targetVdot: number | null
 } {
-  const shown = version ?? shownVersion(detail, undefined)?.plan ?? null
-  const weeks =
-    shown === null
-      ? []
-      : [...shown.weeks].sort((a, b) => calendarDayOfDate(a.start_date) - calendarDayOfDate(b.start_date))
+  const weeks = [...version.weeks].sort((a, b) => calendarDayOfDate(a.start_date) - calendarDayOfDate(b.start_date))
   const last = weeks.length - 1
   const expected = weeks.flatMap((w, i) => {
-    if (w.expected_vdot == null || shown === null) return []
-    const date = i === last ? shown.goal.race_date : isoOfDay(calendarDayOfDate(w.start_date) + 6)
+    if (w.expected_vdot == null) return []
+    const date = i === last ? version.goal.race_date : isoOfDay(calendarDayOfDate(w.start_date) + 6)
     return [{ date, vdot: w.expected_vdot, garmin: w.expected_garmin_vo2max ?? null }]
   })
-  const measured = detail.versions
-    .filter((v) => v.status !== 'withdrawn' && v.status !== 'rejected')
-    .sort((a, b) => a.number - b.number)
-    .flatMap((v) => {
-      const p = v.plan.provenance
-      return p.estimate_vdot == null || p.data_through === null ? [] : [{ date: p.data_through, vdot: p.estimate_vdot }]
-    })
-  return { expected, measured, targetVdot: shown?.provenance.target_vdot ?? null }
+  const from = calendarDayOfDate(measuredFrom)
+  const raceDay = calendarDayOfDate(version.goal.race_date)
+  const days = history.flatMap((p) => {
+    const day = localCalendarDay(p.start_time_utc, p.utc_offset_s)
+    return day < from || day > raceDay ? [] : [{ t: day, v: p.best_efforts_vdot }]
+  })
+  const measured = splitAtNulls(breakAtGaps(days)).map((run) => run.map((q) => ({ date: isoOfDay(q.t), vdot: q.v })))
+  return { expected, measured, targetVdot: version.provenance.target_vdot ?? null }
 }
 
 type LoadWeek = components['schemas']['LoadWeek']

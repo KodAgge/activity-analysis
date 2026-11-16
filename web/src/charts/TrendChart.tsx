@@ -10,6 +10,7 @@ import {
   axisScale,
   bandRange,
   dateAxisSplits,
+  type AxisScale,
   dateTickLabels,
   indicesWithin,
   paddedDayRange,
@@ -41,6 +42,11 @@ export interface TrendChartProps {
    * it, because its identity keys the chart's options memo.
    */
   formatTick?: (value: number) => string
+  /**
+   * Draw the smallest value at the top. For a duration, where the faster
+   * time is the better one and a gain should read as a rise.
+   */
+  invertY?: boolean
   /** What the panel says when no series has a single value to draw. */
   emptyReason: string
   /** Names the chart for assistive technology and for a test to find it by. */
@@ -63,7 +69,22 @@ export interface TrendChartProps {
    * annotation must not out-weigh or be mistaken for the data it marks.
    */
   referenceLine?: { value: number; label: string }
+  /**
+   * The subject's y ladder, in place of `axisScale`'s, for a quantity whose
+   * natural rungs are not the decimal ones: a duration on whole and half
+   * minutes rather than on 200 s steps. Hoist it, for `formatTick`'s reason.
+   */
+  yScale?: (dataMin: number, dataMax: number) => AxisScale
+  /**
+   * Name the envelope and tint it, for a band that is one series' spread
+   * rather than the reference paces': one legend entry in place of the two
+   * edges, and the fill a light tint of `colorVar` instead of `--pace-band`.
+   */
+  band?: { label: string; colorVar: string }
 }
+
+/** A named band's fill: a light tint of its colour, so the lines over it stay the marks read. */
+const BAND_TINT_ALPHA = 0.16
 
 /**
  * The panel's height in CSS pixels per size, and the class that imposes the
@@ -449,10 +470,13 @@ export function TrendChart({
   yLabel,
   formatValue,
   formatTick,
+  invertY = false,
   emptyReason,
   ariaLabel,
   height = 'standard',
   referenceLine,
+  yScale,
+  band,
 }: TrendChartProps) {
   const [hover, setHover] = useState<HoverState | null>(null)
   const readoutRef = useRef<HTMLDivElement | null>(null)
@@ -498,6 +522,7 @@ export function TrendChart({
       if (s.scatter === true && s.faint === true) contextRows.push(i)
       else subjectRows.push(i)
     })
+    const subjectScale = (lo: number, hi: number) => (yScale === undefined ? axisScale(lo, hi) : yScale(lo, hi))
     const solve = (rows: number[], maxIntervals?: number) => {
       const extent = seriesExtent(aligned, rows)
       return extent === null ? null : axisScale(extent[0], extent[1], maxIntervals)
@@ -519,18 +544,18 @@ export function TrendChart({
       const whole = wholeExtent
       return {
         split: false as const,
-        subject: whole === null ? axisScale(0, 1) : axisScale(whole[0], whole[1]),
+        subject: whole === null ? axisScale(0, 1) : subjectScale(whole[0], whole[1]),
         context: null,
         contextRows,
       }
     }
     return {
       split: true as const,
-      subject: solve(subjectRows) ?? axisScale(0, 1),
+      subject: subjectExtent === null ? axisScale(0, 1) : subjectScale(subjectExtent[0], subjectExtent[1]),
       context: solve(contextRows, CONTEXT_MAX_INTERVALS),
       contextRows,
     }
-  }, [aligned, series])
+  }, [aligned, series, yScale])
 
 
   const data = useMemo<uPlot.AlignedData>(() => [aligned.x, ...aligned.ys], [aligned])
@@ -595,6 +620,7 @@ export function TrendChart({
         // ladder is placed in the band that belongs to it rather than
         // across the whole height - see `bandRange`.
         y: {
+          ...(invertY ? { dir: -1 as const } : {}),
           range: () =>
             bands.split
               ? bandRange(bands.subject, SUBJECT_BAND.from, SUBJECT_BAND.to)
@@ -754,7 +780,7 @@ export function TrendChart({
            * Read off `u.data` rather than the closure's aligned rows, like
            * the latest-marker hook, so a data-only refresh stays on the
            * `setData` path. One polygon per run where both edges have a
-           * value, so a gap in either breaks the band exactly where it
+           * value, so a null in either breaks the band exactly where it
            * breaks the lines.
            */
           ...(envelope === null
@@ -771,8 +797,8 @@ export function TrendChart({
                   ctx.beginPath()
                   ctx.rect(u.bbox.left, u.bbox.top, u.bbox.width, u.bbox.height)
                   ctx.clip()
-                  ctx.fillStyle = cssVar('--pace-band')
-                  ctx.globalAlpha = 1
+                  ctx.fillStyle = cssVar(band?.colorVar ?? '--pace-band')
+                  ctx.globalAlpha = band === undefined ? 1 : BAND_TINT_ALPHA
                   let run: number[] = []
                   const flush = () => {
                     if (run.length > 1) {
@@ -795,7 +821,11 @@ export function TrendChart({
                   for (let k = 0; k < xs.length; k += 1) {
                     const a = his[k]
                     const b = los[k]
-                    if (a === null || a === undefined || b === null || b === undefined) flush()
+                    // Undefined is an instant only another series has, which
+                    // the band is drawn through as uPlot draws a line through
+                    // it; a null of the edges' own breaks it.
+                    if (a === undefined || b === undefined) continue
+                    if (a === null || b === null) flush()
                     else run.push(k)
                   }
                   flush()
@@ -1017,7 +1047,7 @@ export function TrendChart({
     // `setHover` is a stable `useState` setter; `options` identity is the
     // chart's recreation key (see UPlot.tsx), so only the shape inputs
     // belong here.
-  }, [series, tickFormatter, bands, contextScale, envelope, stripCaption, height, referenceLine])
+  }, [series, tickFormatter, bands, contextScale, envelope, stripCaption, height, referenceLine, invertY, band])
 
   const hoveredDay = hover === null ? undefined : aligned.x[hover.index]
 
@@ -1050,6 +1080,20 @@ export function TrendChart({
       <ul className={styles.legend} aria-label={`${ariaLabel} legend`}>
         {series.map((s, i) => {
           const colour = `var(${seriesColorVar(s, i)})`
+          if (band !== undefined && s.edge === true) {
+            // A named band is keyed once, where its first edge stands.
+            if (series.findIndex((other) => other.edge === true) !== i) return null
+            return (
+              <li key={band.label} className={styles.legendItem}>
+                <span
+                  aria-hidden="true"
+                  className={styles.swatchBand}
+                  style={{ background: `var(${band.colorVar})`, opacity: BAND_TINT_ALPHA }}
+                />
+                {band.label}
+              </li>
+            )
+          }
           return (
             <li key={s.label} className={styles.legendItem}>
               {s.scatter === true ? (

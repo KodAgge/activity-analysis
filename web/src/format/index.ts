@@ -1041,33 +1041,12 @@ export function sportLabel(sport: string | null): string {
  * there must degrade to its own key rather than break the table.
  */
 const RACE_MODEL_LABEL: Readonly<Record<string, string>> = {
-  riegel: 'Riegel',
-  cameron: 'Cameron',
+  best_efforts: 'Best efforts',
   ordinary_runs: 'Ordinary runs',
 }
 
 export function raceModelLabel(model: string): string {
   return RACE_MODEL_LABEL[model] ?? model
-}
-
-/**
- * The span of several predicted times as `fastest to slowest`, or the one
- * time when they all agree. Empty when there is nothing to span.
- *
- * This is how the best-effort models are reported. They carry no band of
- * their own by design - `RaceModel`'s own validator says their spread *is*
- * the range across the two, and leaves showing it to the caller. It is how
- * far the two extrapolations disagree, not the uncertainty of the effort
- * they start from; `docs/reference/math/predictions.md` has the figures.
- */
-export function formatPredictionSpan(seconds: number[]): string {
-  const finite = seconds.filter((value) => Number.isFinite(value))
-  if (finite.length === 0) return NO_VALUE
-  // Compared as displayed, not as seconds: two models a fraction of a
-  // second apart would otherwise read "50:00 to 50:00".
-  const low = duration(Math.min(...finite))
-  const high = duration(Math.max(...finite))
-  return low === high ? low : `${low}${RANGE_JOIN}${high}`
 }
 
 /*

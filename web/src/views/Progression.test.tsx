@@ -92,7 +92,20 @@ function progression(distanceKey: string, items: ProgressionPoint[]): Progressio
   }
 }
 
-function mockApi(progressions: Record<string, ProgressionResponse>): void {
+const HISTORY = [
+  {
+    activity_id: 'fastest',
+    start_time_utc: '2025-10-12T16:00:00Z',
+    utc_offset_s: 7200,
+    best_efforts_vdot: 50,
+    best_efforts_s: 1500,
+    ordinary_runs_s: 1600,
+    ordinary_runs_low_s: 1550,
+    ordinary_runs_high_s: 1650,
+  },
+]
+
+function mockApi(progressions: Record<string, ProgressionResponse>, history: 'ok' | 'pending' | 'error' = 'ok'): void {
   getMock.mockImplementation((path: string, init?: { params?: { path?: { distance_key?: string } } }) => {
     if (path === '/api/records') return Promise.resolve({ data: { items: RECORDS }, error: undefined })
     if (path === '/api/progression/{distance_key}') {
@@ -103,6 +116,21 @@ function mockApi(progressions: Record<string, ProgressionResponse>): void {
         data: undefined,
         error: { detail: `no efforts at ${key}` },
         response: new Response(null, { status: 404 }),
+      })
+    }
+    if (path === '/api/predictions/history') {
+      if (history === 'pending') return new Promise(() => undefined)
+      if (history === 'error') {
+        return Promise.resolve({
+          data: undefined,
+          error: { detail: 'the series is not built' },
+          response: new Response(null, { status: 500 }),
+        })
+      }
+      return Promise.resolve({
+        data: { distance_m: 5000, points: HISTORY },
+        error: undefined,
+        response: new Response(),
       })
     }
     return Promise.resolve({ data: undefined, error: { detail: `unmocked ${path}` } })
@@ -148,6 +176,47 @@ beforeEach(() => {
 })
 
 describe('Progression', () => {
+  it('requests the history at the distance in metres and keys both lines', async () => {
+    mockApi({ '5k': progression('5k', [point()]) })
+    renderProgression()
+    await screen.findByRole('img', { name: '5 km progression' })
+    await waitFor(() => {
+      expect(lastScatter().predictions).toEqual(HISTORY)
+    })
+    expect(getMock).toHaveBeenCalledWith('/api/predictions/history', { params: { query: { distance_m: 5000 } } })
+    const key = screen.getByRole('list', { name: 'Predicted time' })
+    expect(key).toHaveTextContent('Best efforts prediction')
+    expect(key).toHaveTextContent('Ordinary runs prediction')
+    expect(screen.queryByText(/predicted times/)).toBeNull()
+  })
+
+  it('says the predicted times are loading, and keys no line until they are drawn', async () => {
+    mockApi({ '5k': progression('5k', [point()]) }, 'pending')
+    renderProgression()
+    await screen.findByRole('img', { name: '5 km progression' })
+    expect(await screen.findByRole('status')).toHaveTextContent('Loading the predicted times')
+    expect(screen.queryByText('Best efforts prediction')).toBeNull()
+    expect(screen.queryByText('Ordinary runs prediction')).toBeNull()
+  })
+
+  it('says why the predicted times are missing after the request failed, and keys no line', async () => {
+    mockApi({ '5k': progression('5k', [point()]) }, 'error')
+    renderProgression()
+    await screen.findByRole('img', { name: '5 km progression' })
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^Could not load the predicted times: /)
+    expect(screen.queryByText('Best efforts prediction')).toBeNull()
+    expect(screen.queryByText('Ordinary runs prediction')).toBeNull()
+  })
+
+  it('draws no prediction lines under 1 km and the key says why', async () => {
+    mockApi({ '400m': progression('400m', [point()]) })
+    renderProgression('/?distance=400m')
+    await screen.findByRole('img', { name: '400 m progression' })
+    expect(screen.getByText('Predictions start at 1 km')).toBeInTheDocument()
+    expect(lastScatter().predictions).toBeUndefined()
+    expect(getMock).not.toHaveBeenCalledWith('/api/predictions/history', expect.anything())
+  })
+
   it('defaults to 5 km and says how many efforts and records are drawn', async () => {
     mockApi({ '5k': progression('5k', [point(), point({ activity_id: 'b', is_record: false, is_eligible: false, ineligible_reason: 'treadmill' })]) })
     renderProgression()

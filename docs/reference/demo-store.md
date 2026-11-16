@@ -107,7 +107,8 @@ A run tagged intervals becomes an interval session, one of 14 km or more a long 
 The weeks after `--end` hold intervals on Tuesday, easy runs on Wednesday, Thursday and Saturday and a long run on Sunday, and the race week two easy runs and the race.
 The first four weeks and the race week are detailed; the five between are outlines.
 
-The estimate is the mean of the best-effort models' 10 km predictions, and the target 2.5% under it, rounded to 30 s.
+The estimate is the best-efforts 10 km prediction, and the target 2.5% under it, rounded to 30 s.
+`expected_vdot` rises by 0.15 a week from that prediction's VDOT, which is the best-efforts series' value in version 1's context.
 Both versions take their paces and estimate from version 1's context, since a revision that changed a past session's paces would be refused.
 
 **The plan has no heart-rate zones.**
@@ -143,7 +144,7 @@ Measured on the 2026-10-16 build.
 | Fitness | 572 points; Garmin's line on 504 days, from 48.6 to 53.1 |
 | Records | All 22 distances; 5 km in 21:26, 10 km in 44:38, half marathon in 1:45:49 |
 | Progression | 5 km: 527 efforts, 500 eligible, 5 records |
-| Predictions | All three models at every distance |
+| Predictions | Both series at every distance from 1 km up |
 | Routes | 12, from 5 to 117 runs each, every one with a record; the five 5 km races form their own route |
 | Territory | One region of 7 parts, 4.53 km², claimed by 563 runs |
 

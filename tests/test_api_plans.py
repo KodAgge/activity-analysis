@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from activity_analysis.analysis.fitness import time_for_vdot
 from activity_analysis.api.main import create_app
 from activity_analysis.config import Paths
 from activity_analysis.plan.models import PlanDraft
@@ -88,6 +89,38 @@ def test_plan_detail_serves_every_version_oldest_first(paths: Paths, client: Tes
         (2, "proposed"),
     ]
     assert body["versions"][1]["plan"]["provenance"]["number"] == 2
+
+
+def test_plan_endpoint_serves_expected_prediction_at_the_goal_distance(
+    paths: Paths, client: TestClient
+) -> None:
+    data = _draft().model_dump(mode="json")
+    data["goal"]["distance_m"] = 10000.0
+    data["weeks"][0]["expected_vdot"] = 44.0
+    data["weeks"][4]["expected_vdot"] = 45.0
+    PlanStore(paths).propose(PlanDraft.model_validate(data), CONTEXT, now=NOW)
+    points = client.get(f"/api/plans/{GOAL}").json()["versions"][0]["expected_prediction"]
+    assert len(points) == 5
+    # The first Sunday, and the race on the final week's Saturday, not its Sunday.
+    assert points[0]["local_date"] == "2027-02-14"
+    assert points[-1]["local_date"] == "2027-03-13"
+    assert points[0]["time_s"] == pytest.approx(time_for_vdot(10000.0, 44.0))
+    assert points[-1]["time_s"] == pytest.approx(time_for_vdot(10000.0, 45.0))
+
+
+def test_plan_endpoint_serves_an_old_version_without_expected_vdot(
+    paths: Paths, client: TestClient
+) -> None:
+    store = PlanStore(paths)
+    store.propose(_draft(), CONTEXT, now=NOW)
+    # A version stored before expected_vdot existed: strip it from the file.
+    path = paths.plan_dir(GOAL) / "v001.json"
+    stored = json.loads(path.read_text())
+    for week in stored["weeks"]:
+        del week["expected_vdot"]
+    path.write_text(json.dumps(stored))
+    body = client.get(f"/api/plans/{GOAL}").json()
+    assert body["versions"][0]["expected_prediction"] == []
 
 
 def test_speeds_cross_the_boundary_in_mps(paths: Paths, client: TestClient) -> None:

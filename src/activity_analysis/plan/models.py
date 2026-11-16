@@ -42,6 +42,15 @@ ID_PATTERN = r"^[a-z0-9][a-z0-9-]{0,99}$"
 #: How far a week's planned zone minutes may differ from its sessions' planned duration.
 ZONE_MINUTES_TOLERANCE = 0.10
 
+#: How far the first not-ended week's ``expected_vdot`` may sit from the
+#: best-efforts series' value at ``data_through``, in VDOT units: the series can
+#: move that far before the week ends. Measured 2026-11-16 on the real store as
+#: the largest 7-day change of the daily best-efforts value over its last 365
+#: days (1.89, rounded up). Over the whole history the largest is 9.5, one
+#: outlier after a long gap in training, which a plan written from fresh data
+#: does not face.
+EXPECTED_VDOT_START_TOLERANCE = 1.9
+
 
 def planned_trimp(minutes: Sequence[float], per_minute: Sequence[float | None]) -> float | None:
     """Zone minutes weighted by the athlete's TRIMP per minute in each zone.

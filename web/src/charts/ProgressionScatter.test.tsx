@@ -724,4 +724,146 @@ describe('ProgressionScatter focus ring', () => {
       expect(mark.getAttribute('stroke-width')).not.toBeNull()
     }
   })
+
+  describe('prediction lines', () => {
+    type Prediction = components['schemas']['PredictionHistoryPoint']
+    function prediction(
+      activity_id: string,
+      start_time_utc: string,
+      best: number | null,
+      ordinary: number | null,
+      utc_offset_s: number | null = null,
+    ): Prediction {
+      return {
+        activity_id,
+        start_time_utc,
+        utc_offset_s,
+        best_efforts_vdot: null,
+        best_efforts_s: best,
+        ordinary_runs_s: ordinary,
+        ordinary_runs_low_s: null,
+        ordinary_runs_high_s: null,
+      }
+    }
+    /** Three runs inside the efforts' span, each within six weeks of the last. */
+    const INSIDE = [
+      prediction('p1', '2024-04-01T08:00:00Z', 1580, 1650),
+      prediction('p2', '2024-04-20T08:00:00Z', 1550, 1640),
+      prediction('p3', '2024-05-10T08:00:00Z', 1520, 1620),
+    ]
+    function renderWith(predictions: Prediction[]) {
+      return renderInRouter(
+        <ProgressionScatter
+          points={LADDER}
+          distanceM={5000}
+          predictions={predictions}
+          showIneligible
+          ariaLabel="5 km progression"
+        />,
+      )
+    }
+
+    it('draws both prediction lines when predictions are given', async () => {
+      const { container } = renderWith(INSIDE)
+      await screen.findByRole('img', { name: '5 km progression' })
+      for (const model of ['best_efforts', 'ordinary_runs']) {
+        const line = container.querySelector(`polyline[data-series="${model}"]`)
+        expect(line).not.toBeNull()
+        expect(line?.getAttribute('points')?.split(' ')).toHaveLength(3)
+      }
+      expect(container.querySelector('polyline[data-series="best_efforts"]')?.getAttribute('stroke')).toBe('var(--series-5)')
+      expect(container.querySelector('polyline[data-series="ordinary_runs"]')?.getAttribute('stroke')).toBe('var(--series-2)')
+    })
+
+    it('draws no prediction line without predictions', async () => {
+      const { container } = renderScatter(LADDER)
+      await screen.findByRole('img', { name: '5 km progression' })
+      expect(container.querySelector('polyline[data-series]')).toBeNull()
+    })
+
+    it('keeps the efforts span when the predictions run longer', async () => {
+      const base = renderWith(INSIDE)
+      await screen.findByRole('img', { name: '5 km progression' })
+      const before = Number(circleFor(base.container, 'fastest').getAttribute('cx'))
+      base.unmount()
+      const longer = renderWith([
+        prediction('early', '2020-01-01T08:00:00Z', 1700, 1700),
+        ...INSIDE,
+        prediction('late', '2030-01-01T08:00:00Z', 1500, 1600),
+      ])
+      await screen.findByRole('img', { name: '5 km progression' })
+      expect(Number(circleFor(longer.container, 'fastest').getAttribute('cx'))).toBe(before)
+      const line = longer.container.querySelector('polyline[data-series="best_efforts"]')
+      expect(line?.getAttribute('points')?.split(' ')).toHaveLength(3)
+    })
+
+    it('breaks a line where runs are more than six weeks apart', async () => {
+      const { container } = renderWith([
+        prediction('p1', '2024-04-01T08:00:00Z', 1580, 1650),
+        prediction('p2', '2024-04-20T08:00:00Z', 1570, 1645),
+        prediction('p3', '2024-09-01T08:00:00Z', 1550, 1640),
+        prediction('p4', '2024-09-20T08:00:00Z', 1545, 1635),
+      ])
+      await screen.findByRole('img', { name: '5 km progression' })
+      expect(container.querySelectorAll('polyline[data-series="best_efforts"]')).toHaveLength(2)
+      expect(container.querySelectorAll('polyline[data-series="ordinary_runs"]')).toHaveLength(2)
+    })
+
+    it('dates a run without an effort at this distance by its own offset', async () => {
+      // The last effort is 18:00 local. This run is 17:00 local at UTC-2,
+      // inside the span, and would fall outside it at 19:00 read as UTC.
+      const { container } = renderWith([
+        prediction('before', '2025-10-01T08:00:00Z', 1515, 1615, 7200),
+        prediction('no-effort', '2025-10-12T19:00:00Z', 1510, 1610, -7200),
+      ])
+      await screen.findByRole('img', { name: '5 km progression' })
+      const line = container.querySelector('polyline[data-series="best_efforts"]')
+      expect(line?.getAttribute('points')?.split(' ')).toHaveLength(2)
+    })
+
+    it('brackets the predictions in the time ladder', async () => {
+      const slow = renderWith([prediction('p1', '2024-04-01T08:00:00Z', 2400, 2400), prediction('p2', '2024-04-20T08:00:00Z', 2300, 2300)])
+      await screen.findByRole('img', { name: '5 km progression' })
+      const ys = (slow.container.querySelector('polyline[data-series="best_efforts"]')?.getAttribute('points') ?? '')
+        .split(' ')
+        .map((xy) => Number(xy.split(',')[1]))
+      for (const y of ys) {
+        expect(y).toBeGreaterThanOrEqual(0)
+        expect(y).toBeLessThanOrEqual(360)
+      }
+    })
+
+    it('breaks a line at a run with no estimate', async () => {
+      const { container } = renderWith([
+        prediction('p1', '2024-04-01T08:00:00Z', 1580, 1650),
+        prediction('p2', '2024-05-01T08:00:00Z', 1570, 1650),
+        prediction('p3', '2024-06-01T08:00:00Z', null, 1650),
+        prediction('p4', '2024-07-01T08:00:00Z', 1550, 1650),
+        prediction('p5', '2024-08-01T08:00:00Z', 1540, 1650),
+      ])
+      await screen.findByRole('img', { name: '5 km progression' })
+      const best = container.querySelectorAll('polyline[data-series="best_efforts"]')
+      expect(best).toHaveLength(2)
+      expect(container.querySelectorAll('polyline[data-series="ordinary_runs"]')).toHaveLength(1)
+    })
+
+    it('draws a run its neighbours do not join as a dot, across a null or a gap', async () => {
+      const { container } = renderWith([
+        prediction('p1', '2024-04-01T08:00:00Z', 1580, 1650),
+        prediction('p2', '2024-04-20T08:00:00Z', null, 1645),
+        prediction('p3', '2024-05-10T08:00:00Z', 1560, 1640),
+        prediction('p4', '2024-05-20T08:00:00Z', 1550, 1635),
+        prediction('p5', '2024-09-01T08:00:00Z', 1540, 1630),
+      ])
+      await screen.findByRole('img', { name: '5 km progression' })
+      // Best efforts: p1 alone before the null, p3 to p4, p5 alone past the gap.
+      expect(container.querySelectorAll('polyline[data-series="best_efforts"]')).toHaveLength(1)
+      const dots = container.querySelectorAll('circle[data-series="best_efforts"]')
+      expect(dots).toHaveLength(2)
+      expect(dots[0]?.getAttribute('fill')).toBe('var(--series-5)')
+      // Ordinary runs: p1 to p4, then p5 alone past the gap.
+      expect(container.querySelectorAll('polyline[data-series="ordinary_runs"]')).toHaveLength(1)
+      expect(container.querySelectorAll('circle[data-series="ordinary_runs"]')).toHaveLength(1)
+    })
+  })
 })

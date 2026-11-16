@@ -10,13 +10,14 @@ import pandas as pd
 import pytest
 
 from activity_analysis.analysis.fitness import (
-    cameron,
+    ORDINARY_RUN_CALIBRATION_INTERCEPT,
+    ORDINARY_RUN_CALIBRATION_SLOPE,
+    ORDINARY_RUN_RESIDUAL_VDOT,
+    _prediction_vdots,
     fitness_rows,
     hr_vo2max,
     predict_from_ordinary_run,
-    prediction_anchor,
     race_predictions,
-    riegel,
     smooth_series,
     time_for_vdot,
     vdot,
@@ -159,63 +160,31 @@ def test_smoothing_ignores_activities_with_no_estimate() -> None:
     assert smoothed.iloc[2] == 45.0
 
 
-def test_riegel_matches_the_published_exponent() -> None:
-    """T2 = T1 * (D2/D1)^1.06. From 5 km in 25:00, the 10 km is
-    1500 * 2^1.06 = 3127.4 s."""
-    assert abs(riegel(5000.0, 1500.0, 10000.0) - 3127.4) < 1.0
-
-
-def test_riegel_returns_the_same_time_for_the_same_distance() -> None:
-    assert abs(riegel(5000.0, 1500.0, 5000.0) - 1500.0) < 1e-6
-
-
-def test_cameron_and_riegel_agree_closely_at_short_extrapolations() -> None:
-    """Both are fits to observed performance, so they should not disagree
-    much over a doubling. Their divergence at the marathon end is the reason
-    both are reported rather than one."""
-    r = riegel(5000.0, 1500.0, 10000.0)
-    c = cameron(5000.0, 1500.0, 10000.0)
-    assert abs(r - c) / r < 0.05
-
-
-def test_the_raw_heart_rate_estimate_is_not_used_directly() -> None:
-    """The measured reason this whole function exists: inverting the raw
-    estimate of 52.0 gives a 19.3 minute 5 km, and the calibration a 26.1."""
-    raw = time_for_vdot(5000.0, 52.0)
-    calibrated = predict_from_ordinary_run(52.0, 5000.0)
-    assert calibrated is not None
-    assert calibrated.predicted_s > raw * 1.2
-
-
-def test_the_calibration_maps_a_known_estimate_to_a_known_vdot() -> None:
-    """VDOT = 0.586 * 52.0 + 5.92 = 36.392."""
-    prediction = predict_from_ordinary_run(52.0, 5000.0)
+def test_the_prediction_inverts_the_calibrated_vdot_it_is_given() -> None:
+    prediction = predict_from_ordinary_run(36.392, 5000.0)
     assert prediction is not None
-    assert abs(prediction.predicted_s - time_for_vdot(5000.0, 36.392)) < 1.0
+    assert prediction.predicted_s == pytest.approx(time_for_vdot(5000.0, 36.392))
 
 
 def test_the_band_brackets_the_prediction_and_is_not_symmetric_in_time() -> None:
     """The residual is symmetric in VDOT units, and time is a nonlinear
     function of VDOT, so the band must not be reported as a plus-or-minus on
     the time."""
-    prediction = predict_from_ordinary_run(52.0, 5000.0)
+    prediction = predict_from_ordinary_run(36.4, 5000.0)
     assert prediction is not None
+    assert prediction.low_s == pytest.approx(
+        time_for_vdot(5000.0, 36.4 + ORDINARY_RUN_RESIDUAL_VDOT)
+    )
+    assert prediction.high_s == pytest.approx(
+        time_for_vdot(5000.0, 36.4 - ORDINARY_RUN_RESIDUAL_VDOT)
+    )
     assert prediction.low_s < prediction.predicted_s < prediction.high_s
     lower_gap = prediction.predicted_s - prediction.low_s
     upper_gap = prediction.high_s - prediction.predicted_s
     assert abs(lower_gap - upper_gap) > 0.1
 
 
-def test_the_band_is_about_the_measured_residual() -> None:
-    """Roughly +/-1.39 min on the 26.1 minute 5 km an estimate of 52.0 maps
-    to, from a residual of 2.30 VDOT units."""
-    prediction = predict_from_ordinary_run(52.0, 5000.0)
-    assert prediction is not None
-    half_width = (prediction.high_s - prediction.low_s) / 2.0
-    assert 60.0 < half_width < 100.0
-
-
-def test_no_estimate_means_no_prediction() -> None:
+def test_no_vdot_means_no_prediction() -> None:
     assert predict_from_ordinary_run(float("nan"), 5000.0) is None
 
 
@@ -397,13 +366,6 @@ def test_an_activity_with_nothing_to_say_produces_no_row() -> None:
     assert frame.empty
 
 
-def _recent(*rows: tuple[str, float, float]) -> list[dict[str, object]]:
-    return [
-        {"distance_key": key, "distance_m": metres, "elapsed_time_s": seconds}
-        for key, metres, seconds in rows
-    ]
-
-
 def _models(result: dict[str, object], key: str) -> dict[str, dict[str, object]]:
     items = result["items"]
     assert isinstance(items, list)
@@ -411,16 +373,27 @@ def _models(result: dict[str, object], key: str) -> dict[str, dict[str, object]]
     return {model["model"]: model for model in item["models"]}
 
 
-def test_race_predictions_cover_every_distance_from_a_kilometre_up() -> None:
-    result = race_predictions(
-        _recent(("1k", 1000.0, 250.0), ("5k", 5000.0, 1400.0), ("10k", 10000.0, 3000.0)), 52.0
+def test_race_predictions_inverts_each_vdot_at_every_distance() -> None:
+    out = race_predictions(45.0, 44.0)
+    five = _models(out, "5k")
+    best = five["best_efforts"]
+    assert best["predicted_time_s"] == pytest.approx(time_for_vdot(5000.0, 45.0))
+    assert best["source"] == "best_efforts"
+    assert best["low_s"] is None and best["high_s"] is None
+    ordinary = five["ordinary_runs"]
+    assert ordinary["source"] == "ordinary_runs"
+    assert ordinary["predicted_time_s"] == pytest.approx(time_for_vdot(5000.0, 44.0))
+    assert ordinary["low_s"] == pytest.approx(
+        time_for_vdot(5000.0, 44.0 + ORDINARY_RUN_RESIDUAL_VDOT)
+    )
+    assert ordinary["high_s"] == pytest.approx(
+        time_for_vdot(5000.0, 44.0 - ORDINARY_RUN_RESIDUAL_VDOT)
     )
     # Every `VDOT_DISTANCES_M` entry at or above MIN_PREDICTION_DISTANCE_M,
-    # in ascending order. 400 m is below the floor and so is absent. The
-    # thirteen distances added to the records ladder on 2026-09-12 are absent
-    # too, and deliberately: a predicted time must not move because a rung
-    # was added to a ladder.
-    assert [item["distance_key"] for item in result["items"]] == [
+    # ascending; 400 m is below the floor. The distances added to the records
+    # ladder later are absent on purpose: a predicted time must not move
+    # because a rung was added to a ladder.
+    assert [item["distance_key"] for item in out["items"]] == [
         "1k",
         "1mi",
         "3k",
@@ -430,120 +403,206 @@ def test_race_predictions_cover_every_distance_from_a_kilometre_up() -> None:
         "half",
         "marathon",
     ]
-    assert result["insufficient_data"] is False
-    assert result["reason"] is None
+    assert out["insufficient_data"] is False and out["reason"] is None
 
 
-def test_the_best_effort_models_come_from_the_highest_vdot_recent_effort() -> None:
-    """The 5 km is the better performance here, so Riegel and Cameron are
-    both anchored on it, and both return it unchanged at its own distance."""
-    result = race_predictions(_recent(("1k", 1000.0, 270.0), ("5k", 5000.0, 1400.0)), float("nan"))
-    models = _models(result, "5k")
-    assert models["riegel"]["predicted_time_s"] == pytest.approx(1400.0)
-    assert models["cameron"]["predicted_time_s"] == pytest.approx(1400.0)
-    assert models["riegel"]["source"] == "best_efforts"
-    assert models["riegel"]["low_s"] is None and models["riegel"]["high_s"] is None
-    assert (
-        models["riegel"]["predicted_time_s"] < _models(result, "10k")["riegel"]["predicted_time_s"]
-    )
+def test_race_predictions_without_best_efforts_keeps_ordinary_runs_and_says_why() -> None:
+    out = race_predictions(None, 44.0)
+    assert out["insufficient_data"] is True
+    reason = out["reason"]
+    assert isinstance(reason, str) and "best effort" in reason
+    assert {m["model"] for i in out["items"] for m in i["models"]} == {"ordinary_runs"}
 
 
-def test_race_predictions_anchors_on_prediction_anchor() -> None:
-    """The anchor is the highest-VDOT effort of at least 1 km, and both
-    best-effort models extrapolate from exactly that effort.
-
-    The 400 m here is the strongest performance by VDOT but below the
-    prediction floor, and the 1 km is faster per metre than the 5 km but a
-    weaker performance, so a rule keyed on speed or on the raw maximum would
-    pick a different effort."""
-    efforts = _recent(("400m", 400.0, 60.0), ("1k", 1000.0, 230.0), ("5k", 5000.0, 1200.0))
-    anchor = prediction_anchor(efforts)
-    assert anchor is not None
-    assert anchor["distance_key"] == "5k"
-    result = race_predictions(efforts, None)
-    for key in ("1k", "10k", "marathon"):
-        models = _models(result, key)
-        (item,) = [item for item in result["items"] if item["distance_key"] == key]
-        assert models["riegel"]["predicted_time_s"] == pytest.approx(
-            riegel(5000.0, 1200.0, item["distance_m"])
-        )
-        assert models["cameron"]["predicted_time_s"] == pytest.approx(
-            cameron(5000.0, 1200.0, item["distance_m"])
-        )
-
-
-def test_no_usable_effort_has_no_anchor() -> None:
-    assert prediction_anchor([]) is None
-    assert prediction_anchor(_recent(("400m", 400.0, 60.0), ("1k", 1000.0, 0.0))) is None
-
-
-def test_a_single_recent_distance_is_enough_for_every_model() -> None:
-    """Riegel and Cameron extrapolate from one anchor, so one eligible
-    distance in the window is a complete answer, not an insufficient one."""
-    result = race_predictions(_recent(("5k", 5000.0, 1400.0)), 52.0)
-    assert result["insufficient_data"] is False
-    assert result["reason"] is None
-    assert set(_models(result, "10k")) == {"riegel", "cameron", "ordinary_runs"}
-
-
-def test_an_easy_long_run_in_the_window_moves_no_prediction() -> None:
-    """The shape of the window's efforts on 2026-10-03: a 10 km as the
-    best-scored effort and, as the longest, a 15 km inside an easy long run
-    scoring about three quarters of its VDOT.
-
-    A fit across the per-distance bests, critical speed's, let that one easy
-    point set the slope, and predicted a 10 km 18% slower than the one in the
-    window. The models here read only the best-scored effort, so the easy one
-    changes nothing and no third model appears."""
-    fast = _recent(("3k", 3000.0, 900.0), ("5k", 5000.0, 1500.0), ("10k", 10000.0, 3000.0))
-    with_easy = [*fast, *_recent(("15k", 15000.0, 6000.0))]
-    for key in ("1k", "10k", "half", "marathon"):
-        assert set(_models(race_predictions(with_easy, 52.0), key)) == {
-            "riegel",
-            "cameron",
-            "ordinary_runs",
-        }
-        assert _models(race_predictions(with_easy, 52.0), key) == _models(
-            race_predictions(fast, 52.0), key
-        )
-    assert _models(race_predictions(with_easy, 52.0), "10k")["riegel"][
-        "predicted_time_s"
-    ] == pytest.approx(3000.0)
-
-
-def test_no_recent_effort_leaves_only_the_ordinary_run_prediction() -> None:
-    result = race_predictions([], 52.0)
-    assert result["insufficient_data"] is True
-    reason = result["reason"]
-    assert isinstance(reason, str) and "eligible best effort" in reason
-    for item in result["items"]:
-        assert [model["model"] for model in item["models"]] == ["ordinary_runs"]
-        (model,) = item["models"]
-        assert model["source"] == "ordinary_runs"
-        assert model["low_s"] < model["predicted_time_s"] < model["high_s"]
-
-
-def test_no_estimate_leaves_out_the_ordinary_run_prediction_and_says_so() -> None:
-    result = race_predictions(_recent(("1k", 1000.0, 250.0), ("5k", 5000.0, 1400.0)), float("nan"))
-    assert result["insufficient_data"] is True
-    reason = result["reason"]
+def test_race_predictions_without_ordinary_runs_keeps_best_efforts_and_says_why() -> None:
+    out = race_predictions(45.0, float("nan"))
+    assert out["insufficient_data"] is True
+    reason = out["reason"]
     assert isinstance(reason, str) and "ordinary" in reason
-    assert "ordinary_runs" not in _models(result, "5k")
+    assert set(_models(out, "5k")) == {"best_efforts"}
 
 
-def test_nothing_at_all_is_an_empty_list_with_a_reason() -> None:
-    result = race_predictions([], float("nan"))
-    assert result["items"] == []
-    assert result["insufficient_data"] is True
+def test_race_predictions_with_neither_is_an_empty_list_with_a_reason() -> None:
+    out = race_predictions(None, None)
+    assert out["items"] == []
+    assert out["insufficient_data"] is True
 
 
-def test_a_400_m_effort_is_not_a_prediction_source() -> None:
-    """Below ``MIN_PREDICTION_DISTANCE_M`` (1000 m), and so below the domain the
-    curves were fitted over: the Daniels percentage curve exceeds 1.0 below about
-    two minutes and his tables start at 1500 m, and Riegel's exponent was fitted
-    to race distances. A 400 m window is also short enough that one bad second
-    dominates it, which is why the five fastest 400 m efforts on the real store
-    all carry ``contains_jump``."""
-    result = race_predictions(_recent(("400m", 400.0, 90.0)), float("nan"))
-    assert result["items"] == []
-    assert result["insufficient_data"] is True
+def _timed_runs(days_and_vdots: list[tuple[int, float]], offset_s: int = 0):
+    """Runs at 12:00 UTC on the given days of 2026, each holding one 5 km at its VDOT."""
+    ids = [f"r{index}" for index in range(len(days_and_vdots))]
+    start = pd.Timestamp("2026-01-01 12:00", tz="UTC")
+    activities = pd.DataFrame(
+        {
+            "activity_id": ids,
+            "start_time_utc": [start + pd.Timedelta(days=day) for day, _ in days_and_vdots],
+            "utc_offset_s": [offset_s] * len(ids),
+        }
+    )
+    efforts = _efforts(
+        *(
+            (i, "5k", 5000.0, time_for_vdot(5000.0, v), False)
+            for i, (_, v) in zip(ids, days_and_vdots, strict=True)
+        )
+    )
+    return activities, efforts
+
+
+def _series(activities: pd.DataFrame, efforts: pd.DataFrame) -> pd.DataFrame:
+    return fitness_rows(activities, efforts, {}, {}, set())
+
+
+def test_best_efforts_vdot_averages_the_three_best_runs_in_90_days() -> None:
+    """Raw on day 30 is 47; the 42-day mean runs over days 0-30:
+    days 0-9 raw 50, 10-19 raw 47 (50, 44), 20-29 raw 47 (50, 47, 44), day 30 raw 47."""
+    frame = _series(*_timed_runs([(0, 50.0), (10, 44.0), (20, 47.0), (30, 40.0)]))
+    expected = (10 * 50 + 10 * 47 + 10 * 47 + 47) / 31
+    assert frame["best_efforts_vdot"].iloc[3] == pytest.approx(expected, abs=1e-9)
+
+
+def test_one_run_counts_once_whatever_distances_it_holds() -> None:
+    activities = _activities("a1")
+    efforts = _efforts(
+        ("a1", "5k", 5000.0, time_for_vdot(5000.0, 46.0), False),
+        ("a1", "10k", 10000.0, time_for_vdot(10000.0, 48.0), False),
+    )
+    frame = _series(activities, efforts)
+    assert frame["best_efforts_vdot"].iloc[0] == pytest.approx(48.0, abs=1e-6)
+
+
+def test_efforts_under_1_km_and_ineligible_ones_do_not_count() -> None:
+    activities = _activities("short", "untrusted", "clean")
+    efforts = _efforts(
+        ("short", "400m", 400.0, time_for_vdot(400.0, 60.0), False),
+        ("untrusted", "5k", 5000.0, time_for_vdot(5000.0, 58.0), True),
+        ("clean", "5k", 5000.0, time_for_vdot(5000.0, 45.0), False),
+    )
+    frame = _series(activities, efforts)
+    # The short run still has a row (its 400 m VDOT), but no 1 km run VDOT.
+    assert frame["best_efforts_vdot"].iloc[-1] == pytest.approx(45.0, abs=1e-6)
+
+
+def test_smoothing_is_over_days_not_runs() -> None:
+    """Raw 40 on days 0-49, 43 on days 50-89. A row on day 70 with no effort
+    reads (21 * 40 + 21 * 43) / 42 = 41.5, not the mean of the two runs' values."""
+    start = pd.Timestamp("2026-01-01 12:00", tz="UTC")
+    rows = pd.DataFrame(
+        {
+            "start_time_utc": [start + pd.Timedelta(days=d) for d in (0, 50, 70)],
+            "local_date": [(start + pd.Timedelta(days=d)).date() for d in (0, 50, 70)],
+            "hr_vo2max_smoothed": [np.nan] * 3,
+        }
+    )
+    out = _prediction_vdots(rows, pd.Series([40.0, 46.0, np.nan]))
+    assert out["best_efforts_vdot"].iloc[2] == pytest.approx(41.5, abs=1e-9)
+
+
+def test_the_first_run_after_a_long_gap_stands_alone() -> None:
+    frame = _series(*_timed_runs([(0, 40.0), (200, 46.0)]))
+    assert frame["best_efforts_vdot"].iloc[1] == pytest.approx(46.0, abs=1e-6)
+
+
+def test_ordinary_runs_vdot_is_the_calibrated_estimate_smoothed_over_days() -> None:
+    """Raw 50 on days 0-20 and 60 from day 21, so day 41 averages 21 days of
+    each: calibrated 55."""
+    start = pd.Timestamp("2026-01-01 12:00", tz="UTC")
+    days = (0, 21, 41)
+    rows = pd.DataFrame(
+        {
+            "start_time_utc": [start + pd.Timedelta(days=d) for d in days],
+            "local_date": [(start + pd.Timedelta(days=d)).date() for d in days],
+            "hr_vo2max_smoothed": [50.0, 60.0, 60.0],
+        }
+    )
+    out = _prediction_vdots(rows, pd.Series([np.nan] * 3))
+    expected = ORDINARY_RUN_CALIBRATION_SLOPE * 55.0 + ORDINARY_RUN_CALIBRATION_INTERCEPT
+    assert out["ordinary_runs_vdot"].iloc[2] == pytest.approx(expected, abs=1e-9)
+
+
+def test_ordinary_runs_ignore_a_heart_rate_estimate_older_than_the_window() -> None:
+    """The only estimate is day 0's, raw on days 0-89 and gone from day 90
+    though later runs carry none. Day 130's 42 days, 89 to 130, still hold
+    day 89; day 131's, 90 to 131, hold no raw value, so it is null rather
+    than day 0's estimate carried forward."""
+    start = pd.Timestamp("2026-01-01 12:00", tz="UTC")
+    days = (0, 130, 131)
+    rows = pd.DataFrame(
+        {
+            "start_time_utc": [start + pd.Timedelta(days=d) for d in days],
+            "local_date": [(start + pd.Timedelta(days=d)).date() for d in days],
+            "hr_vo2max_smoothed": [50.0, np.nan, np.nan],
+        }
+    )
+    out = _prediction_vdots(rows, pd.Series([np.nan] * 3))
+    calibrated = ORDINARY_RUN_CALIBRATION_SLOPE * 50.0 + ORDINARY_RUN_CALIBRATION_INTERCEPT
+    assert out["ordinary_runs_vdot"].iloc[1] == pytest.approx(calibrated, abs=1e-9)
+    assert math.isnan(out["ordinary_runs_vdot"].iloc[2])
+
+
+def test_a_late_evening_run_is_dated_by_its_local_day() -> None:
+    """23:30 UTC at +01:00 is local day 1, so the run 90 UTC days later is 89
+    local days after it and still inside its window. Read in UTC the old run
+    would sit exactly 90 days back and fall out."""
+    start = pd.Timestamp("2026-01-01 23:30", tz="UTC")
+    activities = pd.DataFrame(
+        {
+            "activity_id": ["old", "new"],
+            "start_time_utc": [start, start + pd.Timedelta(days=90, hours=-11, minutes=-30)],
+            "utc_offset_s": [3600, 0],
+        }
+    )
+    efforts = _efforts(
+        ("old", "5k", 5000.0, time_for_vdot(5000.0, 50.0), False),
+        ("new", "5k", 5000.0, time_for_vdot(5000.0, 40.0), False),
+    )
+    frame = _series(activities, efforts)
+    # Local days 1 and 90: raw 50 on days 1-89 and 45 on day 90, smoothed over days 49-90.
+    assert frame["best_efforts_vdot"].iloc[1] == pytest.approx((41 * 50.0 + 45.0) / 42, abs=1e-6)
+
+
+def test_no_eligible_effort_leaves_best_efforts_vdot_null_and_ordinary_set() -> None:
+    activities = _activities("a1")
+    frame = fitness_rows(
+        activities,
+        _efforts(),
+        grids={"a1": (np.full(30 * 40, 3.0), np.full(30 * 40, 160.0))},
+        max_hr_by_activity={"a1": 200.0},
+        excluded_activity_ids=set(),
+    )
+    assert math.isnan(frame["best_efforts_vdot"].iloc[0])
+    assert math.isfinite(frame["ordinary_runs_vdot"].iloc[0])
+
+
+def _every_second_day(before: float, after: float) -> pd.DataFrame:
+    """A row every day from day -200 to 200 and a run every second day, whose
+    VDOT is ``before`` until day 0 and ``after`` from it, indexed by day."""
+    offsets = np.arange(-200, 201)
+    start = pd.Timestamp("2026-01-01")
+    rows = pd.DataFrame(
+        {
+            "local_date": [(start + pd.Timedelta(days=int(d))).date() for d in offsets],
+            "hr_vo2max_smoothed": [np.nan] * len(offsets),
+        }
+    )
+    run_vdot = np.where(offsets % 2 == 0, np.where(offsets >= 0, after, before), np.nan)
+    return _prediction_vdots(rows, pd.Series(run_vdot)).set_axis(offsets)
+
+
+def test_a_held_rise_is_in_full_45_days_after_it() -> None:
+    """The third run at the new level, day 4, lifts the raw value to it, and
+    the 42-day mean holds only such days from day 4 + 41 = 45.
+    predictions.md, "The lag", quotes this figure."""
+    series = _every_second_day(40.0, 42.0)["best_efforts_vdot"]
+    assert series[44] < 42.0
+    assert series[45] == pytest.approx(42.0, abs=1e-9)
+
+
+def test_a_held_fall_waits_for_the_best_runs_to_leave_the_window() -> None:
+    """The three best runs stay the old ones until the first of them, day -6,
+    leaves the 90-day window on day 84. The last, day -2, leaves on day 88,
+    and the 42-day mean holds only lower days from 88 + 41 = 129."""
+    series = _every_second_day(42.0, 40.0)["best_efforts_vdot"]
+    assert series[83] == pytest.approx(42.0, abs=1e-9)
+    assert series[84] < 42.0
+    assert series[128] > 40.0
+    assert series[129] == pytest.approx(40.0, abs=1e-9)

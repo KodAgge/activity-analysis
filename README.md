@@ -151,10 +151,10 @@ Homebrew's `brew install uv` and Windows' `winget install --id=astral-sh.uv -e` 
 **Install the app.** Open a new terminal, so that it finds `uv`, then run:
 
 ```bash
-uv tool install --python 3.12 https://github.com/KodAgge/activity-analysis/releases/download/v0.2.0/activity_analysis-0.2.0-py3-none-any.whl
+uv tool install --python 3.12 https://github.com/KodAgge/activity-analysis/releases/download/v0.3.0/activity_analysis-0.3.0-py3-none-any.whl
 ```
 
-That is release 0.2.0; the [releases page](https://github.com/KodAgge/activity-analysis/releases/latest) has the newest, whose `.whl` link goes in the same command.
+That is release 0.3.0; the [releases page](https://github.com/KodAgge/activity-analysis/releases/latest) has the newest, whose `.whl` link goes in the same command.
 `--python 3.12` makes uv download Python 3.12 when the computer lacks it, since an older Python fails the install.
 If the terminal then cannot find `activity-analysis`, run `uv tool update-shell` and open a new terminal.
 

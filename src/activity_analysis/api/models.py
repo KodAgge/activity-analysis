@@ -765,16 +765,15 @@ class TrainingLoad(BaseModel):
 class RaceModel(BaseModel):
     """One model's prediction at one distance."""
 
-    #: ``riegel``, ``cameron`` or ``ordinary_runs``. Not
+    #: ``best_efforts`` or ``ordinary_runs``. Not
     #: an enum, for the same reason ``Record.distance_key`` is not: the set
     #: belongs to the analysis layer.
     model: str
     predicted_time_s: float
     low_s: float | None
     high_s: float | None
-    #: ``best_efforts`` or ``ordinary_runs``. The two are shown differently:
-    #: the best-effort models are read together as a range, the ordinary-run
-    #: prediction stands alone with its own band.
+    #: ``best_efforts`` or ``ordinary_runs``, the same as ``model``. The
+    #: ordinary-run prediction carries its own band; the best-efforts one has none.
     source: str
 
     @model_validator(mode="after")
@@ -782,9 +781,7 @@ class RaceModel(BaseModel):
         """A prediction from ordinary running is about 5% wide on a 5 km.
 
         Reporting the number without the band invites it to be read with the
-        precision of a best-effort prediction, which it does not have. The
-        best-effort models may omit the band because their spread is the
-        range across the two models, shown by the caller.
+        precision of a best-effort prediction, which it does not have.
         """
         if self.source == "ordinary_runs" and (self.low_s is None or self.high_s is None):
             raise ValueError("an ordinary_runs prediction must carry low_s and high_s")
@@ -797,6 +794,30 @@ class Prediction(BaseModel):
     distance_key: str
     distance_m: float
     models: list[RaceModel]
+
+
+class PredictionHistoryPoint(BaseModel):
+    """Both models' predicted time at one run, at the requested distance.
+
+    Either model may be null on its own, as on ``FitnessPoint``. The band
+    belongs to the ordinary-run model alone.
+    """
+
+    activity_id: str
+    start_time_utc: UtcInstant
+    utc_offset_s: int | None
+    best_efforts_vdot: float | None
+    best_efforts_s: float | None
+    ordinary_runs_s: float | None
+    ordinary_runs_low_s: float | None
+    ordinary_runs_high_s: float | None
+
+
+class PredictionHistory(BaseModel):
+    """The prediction at one distance after each run, oldest first."""
+
+    distance_m: float
+    points: list[PredictionHistoryPoint]
 
 
 class Predictions(BaseModel):
@@ -1090,10 +1111,18 @@ class Plans(BaseModel):
     items: list[PlanSummary]
 
 
+class ExpectedPredictionPoint(BaseModel):
+    """The goal-distance time a week's ``expected_vdot`` implies, on its last day."""
+
+    local_date: date
+    time_s: float
+
+
 class PlanVersionEntry(BaseModel):
     number: int
     status: VersionStatus
     plan: PlanVersion
+    expected_prediction: list[ExpectedPredictionPoint]
 
 
 class PlanDetail(BaseModel):

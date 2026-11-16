@@ -20,6 +20,7 @@ type TrendsResponse = components['schemas']['Trends']
 type FitnessPoint = components['schemas']['FitnessPoint']
 type DeviceVo2maxPoint = components['schemas']['DeviceVo2maxPoint']
 type Predictions = components['schemas']['Predictions']
+type PredictionHistoryPoint = components['schemas']['PredictionHistoryPoint']
 type ReferencePaces = components['schemas']['ReferencePacesOut']
 type TrainingLoad = components['schemas']['TrainingLoad']
 type LoadWeek = components['schemas']['LoadWeek']
@@ -162,14 +163,20 @@ function mockApi({
   device = [],
   predictions = NO_PREDICTIONS,
   trainingLoad = TRAINING_LOAD,
+  history = [],
 }: {
   trends?: TrendsResponse
   fitness?: FitnessPoint[]
   device?: DeviceVo2maxPoint[]
   predictions?: Predictions
   trainingLoad?: TrainingLoad
+  history?: PredictionHistoryPoint[]
 } = {}): void {
-  getMock.mockImplementation((path: string) => {
+  getMock.mockImplementation((path: string, options?: { params?: { query?: { distance_m?: number } } }) => {
+    if (path === '/api/predictions/history') {
+      const distanceM = options?.params?.query?.distance_m ?? 0
+      return Promise.resolve({ data: { distance_m: distanceM, points: history }, error: undefined })
+    }
     if (path === '/api/training-load') return Promise.resolve({ data: trainingLoad, error: undefined })
     if (path === '/api/trends') return Promise.resolve({ data: trends, error: undefined })
     if (path === '/api/fitness') return Promise.resolve({ data: { items: fitness, device }, error: undefined })
@@ -835,43 +842,166 @@ describe('Trends', () => {
   })
 })
 
+function historyPoint(overrides: Partial<PredictionHistoryPoint> = {}): PredictionHistoryPoint {
+  return {
+    activity_id: 'steady-run',
+    start_time_utc: '2025-10-12T16:30:00Z',
+    utc_offset_s: null,
+    best_efforts_vdot: 50,
+    best_efforts_s: 1500,
+    ordinary_runs_s: 1560,
+    ordinary_runs_low_s: 1500,
+    ordinary_runs_high_s: 1620,
+    ...overrides,
+  }
+}
+
+const TWO_DISTANCES: Predictions = {
+  insufficient_data: false,
+  reason: null,
+  items: [
+    {
+      distance_key: '5k',
+      distance_m: 5000,
+      models: [
+        { model: 'best_efforts', predicted_time_s: 1500, low_s: null, high_s: null, source: 'best_efforts' },
+        { model: 'ordinary_runs', predicted_time_s: 1560, low_s: 1500, high_s: 1620, source: 'ordinary_runs' },
+      ],
+    },
+    {
+      distance_key: '10k',
+      distance_m: 10000,
+      models: [
+        { model: 'best_efforts', predicted_time_s: 3100, low_s: null, high_s: null, source: 'best_efforts' },
+        { model: 'ordinary_runs', predicted_time_s: 3180, low_s: 2940, high_s: 3300, source: 'ordinary_runs' },
+      ],
+    },
+  ],
+}
+
+function historyRequests(): number[] {
+  return getMock.mock.calls
+    .filter(([path]) => path === '/api/predictions/history')
+    .map(([, options]) => (options as { params: { query: { distance_m: number } } }).params.query.distance_m)
+}
+
 describe('Trends race predictions', () => {
-  it('reports the best-effort models as one range, with each model beneath it', async () => {
-    // The API leaves this to the frontend on purpose: `RaceModel`'s own
-    // validator lets a best-effort model omit its band because "their
-    // spread is the range across the two models, shown by the caller".
-    mockApi({
-      predictions: {
-        insufficient_data: false,
-        reason: null,
-        items: [
-          {
-            distance_key: '10k',
-            distance_m: 10000,
-            models: [
-              { model: 'riegel', predicted_time_s: 3000, low_s: null, high_s: null, source: 'best_efforts' },
-              { model: 'cameron', predicted_time_s: 3120, low_s: null, high_s: null, source: 'best_efforts' },
-              { model: 'ordinary_runs', predicted_time_s: 3060, low_s: 2940, high_s: 3180, source: 'ordinary_runs' },
-            ],
-          },
-        ],
-      },
-    })
+  it('shows one best-efforts time per distance beside the ordinary-runs time and band', async () => {
+    mockApi({ predictions: TWO_DISTANCES })
     renderTrends()
     const row = await screen.findByRole('row', { name: /10 km/ })
 
-    // The range spans the faster and slower of the two, and the
-    // ordinary-runs prediction is not folded into it.
-    expect(within(row).getByText('50:00 to 52:00')).toBeInTheDocument()
-    // Each model is still named, so a reader can see which end is whose,
-    // with the analysis layer's key rendered as words.
-    expect(within(row).getByText(/Riegel/)).toBeInTheDocument()
-    expect(within(row).getByText(/Cameron/)).toBeInTheDocument()
-    expect(within(row).queryByText('ordinary_runs')).toBeNull()
-    // The ordinary-runs prediction keeps its own time, pace and band.
-    expect(within(row).getByText('51:00')).toBeInTheDocument()
-    expect(within(row).getByText('5:06/km')).toBeInTheDocument()
-    expect(within(row).getByText('49:00 to 53:00')).toBeInTheDocument()
+    expect(within(row).getByText('51:40')).toBeInTheDocument()
+    expect(within(row).queryByText(/Riegel|Cameron/)).toBeNull()
+    expect(within(row).getByText('53:00')).toBeInTheDocument()
+    expect(within(row).getByText('5:18/km')).toBeInTheDocument()
+    expect(within(row).getByText('49:00 to 55:00')).toBeInTheDocument()
+  })
+
+  it('draws the 5 km history by default and the 10 km one after its pill is chosen', async () => {
+    mockApi({ predictions: TWO_DISTANCES, history: [historyPoint()] })
+    renderTrends()
+    await screen.findByRole('img', { name: 'Predicted time over time' })
+    expect(historyRequests()).toEqual([5000])
+    expect(screen.getByRole('radio', { name: '5 km' })).toBeChecked()
+
+    fireEvent.click(screen.getByRole('radio', { name: '10 km' }))
+    await waitFor(() => expect(historyRequests()).toContain(10000))
+    expect(screen.getByRole('radio', { name: '10 km' })).toBeChecked()
+  })
+
+  it('falls back to the first listed distance when the default 5 km is not among them', async () => {
+    mockApi({
+      predictions: { ...TWO_DISTANCES, items: TWO_DISTANCES.items.slice(1) },
+      history: [historyPoint()],
+    })
+    renderTrends()
+    await screen.findByRole('img', { name: 'Predicted time over time' })
+    expect(historyRequests()).toEqual([10000])
+    expect(screen.getByRole('radio', { name: '10 km' })).toBeChecked()
+  })
+
+  it('hands the chart best efforts as the subject, ordinary runs as a line and its band as the edges, fastest at the top', async () => {
+    mockApi({ predictions: TWO_DISTANCES, history: [historyPoint()] })
+    renderTrends()
+    await screen.findByRole('img', { name: 'Predicted time over time' })
+    const call = chartCalled('Predicted time over time')
+    expect(call.invertY).toBe(true)
+    expect(call.series.map((s) => [s.label, s.edge === true])).toEqual([
+      ['Best efforts', false],
+      ['Ordinary runs', false],
+      ['Ordinary runs, faster end', true],
+      ['Ordinary runs, slower end', true],
+    ])
+    expect(call.series[0]?.points.map((p) => p.v)).toEqual([1500])
+    // Best efforts apart from the records' accent; ordinary runs as on Progression and the plan.
+    expect(call.series.slice(0, 2).map((s) => s.colorVar)).toEqual(['--series-5', '--series-2'])
+    // One legend entry for the band, in a tint of the ordinary-runs colour.
+    expect(call.band).toEqual({ label: 'Ordinary runs range', colorVar: '--series-2' })
+    // Rules on whole or half minutes, not on 200 s steps.
+    const scale = call.yScale?.(1380, 2000)
+    expect(scale?.splits.length).toBeGreaterThan(2)
+    for (const tick of scale?.splits ?? []) expect(tick % 30).toBe(0)
+    expect(scale?.min).toBeLessThanOrEqual(1380)
+    expect(scale?.max).toBeGreaterThanOrEqual(2000)
+    expect(call.series[3]?.points.map((p) => p.v)).toEqual([1620])
+  })
+
+  it('breaks every history line where runs are more than six weeks apart', async () => {
+    mockApi({
+      predictions: TWO_DISTANCES,
+      history: [
+        historyPoint({ activity_id: 'a', start_time_utc: '2025-01-10T10:00:00Z' }),
+        historyPoint({ activity_id: 'b', start_time_utc: '2025-01-20T10:00:00Z' }),
+        historyPoint({ activity_id: 'c', start_time_utc: '2025-06-10T10:00:00Z' }),
+      ],
+    })
+    renderTrends('/?period=all')
+    await screen.findByRole('img', { name: 'Predicted time over time' })
+    await waitFor(() => expect(chartCalled('Predicted time over time').series[0]?.points).toHaveLength(4))
+    for (const s of chartCalled('Predicted time over time').series) {
+      expect(s.points.map((p) => p.v === null)).toEqual([false, false, true, false])
+    }
+  })
+
+  it('scopes the history chart to the period', async () => {
+    mockApi({
+      predictions: TWO_DISTANCES,
+      history: [
+        historyPoint({ activity_id: 'old', start_time_utc: '2024-01-10T10:00:00Z', best_efforts_s: 1700 }),
+        historyPoint({ activity_id: 'new', start_time_utc: '2025-10-12T16:30:00Z', best_efforts_s: 1500 }),
+      ],
+    })
+    renderTrends('/?period=custom&from=2025-09-01&to=2025-11-01')
+    await screen.findByRole('img', { name: 'Predicted time over time' })
+    await waitFor(() => expect(chartCalled('Predicted time over time').series[0]?.points).toHaveLength(1))
+    expect(chartCalled('Predicted time over time').series[0]?.points[0]?.v).toBe(1500)
+  })
+
+  it('dates each history point by its own offset, not the trends payload', async () => {
+    // A run the trends payload does not carry, just after local midnight:
+    // read in UTC it would sit on the day before.
+    mockApi({
+      predictions: TWO_DISTANCES,
+      history: [historyPoint({ activity_id: 'not-in-trends', start_time_utc: '2025-10-12T22:30:00Z', utc_offset_s: 7200 })],
+    })
+    renderTrends()
+    await screen.findByRole('img', { name: 'Predicted time over time' })
+    await waitFor(() =>
+      expect(chartCalled('Predicted time over time').series[0]?.points.map((p) => p.t)).toEqual([
+        localCalendarTime('2025-10-12T22:30:00Z', 7200),
+      ]),
+    )
+  })
+
+  it('states an absence when the history has no points', async () => {
+    mockApi({ predictions: TWO_DISTANCES, history: [] })
+    renderTrends()
+    await screen.findByRole('img', { name: 'Predicted time over time' })
+    // The chart states the absence itself, from the reason it is handed.
+    const call = chartCalled('Predicted time over time')
+    expect(call.series.every((s) => s.points.length === 0)).toBe(true)
+    expect(call.emptyReason).toMatch(/No run has a predicted time/)
   })
 
   it('says the ordinary-runs prediction reads typical training, so it is not read as a second race prediction', async () => {
@@ -899,17 +1029,16 @@ describe('Trends race predictions', () => {
     if (section === null) throw new Error('no predictions section')
 
     const terms = within(section).getAllByRole('term')
-    expect(terms.map((t) => t.textContent)).toEqual(['Riegel', 'Cameron', 'Ordinary runs'])
+    expect(terms.map((t) => t.textContent)).toEqual(['Best efforts', 'Ordinary runs'])
 
     // Each term's own definition, so a claim cannot satisfy this by
     // appearing somewhere else in the section.
     const definitions = within(section)
       .getAllByRole('definition')
       .map((d) => d.textContent ?? '')
-    expect(definitions[0]).toMatch(/pace decays with distance/i)
-    expect(definitions[1]).toMatch(/400 m to the marathon/i)
-    expect(definitions[2]).toMatch(/calibrat/i)
-    expect(definitions[2]).toMatch(/typical training/i)
+    expect(definitions[0]).toMatch(/VDOT/)
+    expect(definitions[1]).toMatch(/calibrat/i)
+    expect(definitions[1]).toMatch(/typical training/i)
   })
 
   it('keeps every computed distance when only some models dropped out, and states the reason beside the table', async () => {
@@ -926,8 +1055,7 @@ describe('Trends race predictions', () => {
             distance_key: '1k',
             distance_m: 1000,
             models: [
-              { model: 'riegel', predicted_time_s: 250, low_s: null, high_s: null, source: 'best_efforts' },
-              { model: 'cameron', predicted_time_s: 258, low_s: null, high_s: null, source: 'best_efforts' },
+              { model: 'best_efforts', predicted_time_s: 250, low_s: null, high_s: null, source: 'best_efforts' },
             ],
           },
           { distance_key: '5k', distance_m: 5000, models: [] },
@@ -935,8 +1063,7 @@ describe('Trends race predictions', () => {
             distance_key: '10k',
             distance_m: 10000,
             models: [
-              { model: 'riegel', predicted_time_s: 3000, low_s: null, high_s: null, source: 'best_efforts' },
-              { model: 'cameron', predicted_time_s: 3120, low_s: null, high_s: null, source: 'best_efforts' },
+              { model: 'best_efforts', predicted_time_s: 3000, low_s: null, high_s: null, source: 'best_efforts' },
             ],
           },
         ],
@@ -950,13 +1077,12 @@ describe('Trends race predictions', () => {
       .getAllByRole('row')
       .filter((row) => row.hasAttribute('data-distance-key'))
     expect(rows.map((row) => row.getAttribute('data-distance-key'))).toEqual(['1k', '5k', '10k'])
-    // The distance with no ordinary-runs prediction still shows the range
-    // across the models it has.
-    expect(within(rows[0]!).getByText('4:10 to 4:18')).toBeInTheDocument()
+    // The distance with no ordinary-runs prediction still shows its best-efforts time.
+    expect(within(rows[0]!).getByText('4:10')).toBeInTheDocument()
     // A distance that lost every model renders the no-value glyph in both
     // cells rather than a blank row.
     expect(within(rows[1]!).getAllByText(NO_VALUE)).toHaveLength(2)
-    expect(within(rows[2]!).getByText('50:00 to 52:00')).toBeInTheDocument()
+    expect(within(rows[2]!).getByText('50:00')).toBeInTheDocument()
     // The API's own prose, beside the table rather than in place of it.
     expect(within(section).getByRole('note')).toHaveTextContent('no prediction from ordinary runs')
     expect(within(section).queryByText('No predictions yet')).toBeNull()

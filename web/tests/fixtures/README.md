@@ -16,4 +16,5 @@ Its map data is © OpenStreetMap contributors, available under the Open Database
 `scripts/e2e-api-server.mjs` proposes and accepts it as of 2026-08-29, and `plan.spec.ts` reads it.
 Its weeks are built around the dates of the five fixture runs, and every value in it is made up.
 Its four weeks not ended at that day carry zone minutes, an expected VDOT and an expected Garmin VO2max.
+The expected VDOT starts at 32.4, within check 21's 1.9 units of the fixture store's best-efforts series at 2026-08-29, 32.2, and rises 0.3 a week.
 The fixture runs carry a TRIMP but give no threshold estimate, so the accepted version has no zone boundaries and no TRIMP per minute, and the weekly load draws its runs beside no planned bar.

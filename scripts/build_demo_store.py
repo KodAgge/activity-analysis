@@ -982,12 +982,12 @@ def _plan_facts(context: dict[str, Any], distance_m: float) -> _PlanFacts:
     items = context["predictions"]["items"]
     index = next(i for i, item in enumerate(items) if item["distance_m"] == distance_m)
     models = list(enumerate(items[index]["models"]))
-    # The two best-effort models, or the ordinary-runs one on a store with neither.
+    # The best-efforts prediction, or the ordinary-runs one on a store without it.
     used = [(j, m) for j, m in models if m["source"] == "best_efforts"] or models
     estimate = float(np.mean([m["predicted_time_s"] for _, m in used]))
     citations = [
         Citation(
-            label=f"{m['model'].title()} prediction",
+            label=f"{m['model'].replace('_', ' ').capitalize()} prediction",
             pointer=f"/predictions/items/{index}/models/{j}",
         )
         for j, m in used
@@ -1196,7 +1196,7 @@ def demo_plan_draft(
                 "\n- Ten weeks of steady training close a gap of this size"
             ),
             estimate_s=facts.estimate_s,
-            estimate_reasoning=("Estimate:\n- The mean of the two best-effort models at 10 km"),
+            estimate_reasoning=("Estimate:\n- The best-efforts prediction at 10 km"),
             verdict="possible",
             citations=facts.citations,
         ),

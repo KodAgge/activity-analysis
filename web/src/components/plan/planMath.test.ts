@@ -9,6 +9,9 @@ import {
   dataAgeDays,
   daysToRace,
   displayedGoal,
+  expectedLine,
+  latestBestEffortsS,
+  measuredFrom,
   goalChangesFirst,
   nextSession,
   nextWeek,
@@ -21,9 +24,7 @@ import {
   sessionEntry,
   sessionTarget,
   shownVersion,
-  snapshotPrediction,
   timeTrialDate,
-  trajectory,
   weeklyDistance,
 } from './planMath'
 
@@ -297,52 +298,93 @@ describe('daysToRace', () => {
   })
 })
 
-describe('trajectory', () => {
-  it('reads the riegel prediction at the goal distance, skipping withdrawn and rejected', () => {
-    const snap = (model: string, t: number, d = 10000): S['SnapshotPrediction'] => ({
-      distance_key: '10k', distance_m: d, model, predicted_time_s: t, low_s: null, high_s: null,
-    })
-    const detail = {
-      goal_id: 'g',
-      status: 'active',
-      versions: [
-        { number: 1, status: 'superseded', plan: version([], { number: 1, snapshot: [snap('riegel', 3100), snap('ordinary_runs', 3200), snap('riegel', 1400, 5000)] }) },
-        { number: 2, status: 'withdrawn', plan: version([], { number: 2 }) },
-        { number: 3, status: 'rejected', plan: version([], { number: 3 }) },
-        { number: 4, status: 'proposed', plan: version([], { number: 4, snapshot: [snap('ordinary_runs', 3050)] }) },
+describe('expectedLine', () => {
+  type History = S['PredictionHistoryPoint']
+  function point(start: string, offset: number | null, bestS: number | null): History {
+    return {
+      activity_id: start,
+      start_time_utc: start,
+      utc_offset_s: offset,
+      best_efforts_vdot: bestS === null ? null : 50,
+      best_efforts_s: bestS,
+      ordinary_runs_s: 3100,
+      ordinary_runs_low_s: 3000,
+      ordinary_runs_high_s: 3200,
+    }
+  }
+  function entry(over: { estimateS?: number | null; dataThrough?: string | null; expected?: S['ExpectedPredictionPoint'][] }) {
+    const plan = version([], { dataThrough: over.dataThrough })
+    return {
+      number: 1,
+      status: 'accepted',
+      plan: { ...plan, assessment: { estimate_s: over.estimateS === undefined ? 2950 : over.estimateS } },
+      expected_prediction: over.expected ?? [
+        { local_date: '2027-02-07', time_s: 3040 },
+        { local_date: '2027-03-13', time_s: 3000 },
       ],
-    } as PlanDetail
-    // The ordinary-run prediction is never read: the plan's estimate rests
-    // on best efforts only, so version 4 has no point.
-    expect(trajectory(detail, 10000)).toEqual([
-      { number: 1, createdAt: '2027-01-24T10:00:00Z', bestEffortS: 3100 },
-      { number: 4, createdAt: '2027-01-24T10:00:00Z', bestEffortS: null },
+    } as unknown as S['PlanVersionEntry']
+  }
+
+  it('starts the expected line on the measured value at data_through', () => {
+    // data_through is 23 January. The run at 23:30Z on the 23rd is on the
+    // 24th at UTC+1, so the newest point on or before the 23rd is the 20th's.
+    const history = [
+      point('2027-01-20T08:00:00Z', 3600, 3060),
+      point('2027-01-23T23:30:00Z', 3600, 3020),
+    ]
+    expect(expectedLine(entry({}), history)).toEqual([
+      { date: '2027-01-23', valueS: 3060 },
+      { date: '2027-02-07', valueS: 3040 },
+      { date: '2027-03-13', valueS: 3000 },
     ])
   })
 
-  it('matches the goal distance within half a percent, as snapshotPrediction does', () => {
-    const snap = (d: number): S['SnapshotPrediction'] => ({
-      distance_key: 'half', distance_m: d, model: 'riegel', predicted_time_s: 6000, low_s: null, high_s: null,
-    })
-    const detail = {
-      goal_id: 'g',
-      status: 'active',
-      versions: [{ number: 1, status: 'accepted', plan: version([], { number: 1, snapshot: [snap(21097.5)] }) }],
-    } as PlanDetail
-    expect(trajectory(detail, 21100)[0]?.bestEffortS).toBe(6000)
-    expect(trajectory(detail, 5200)[0]?.bestEffortS).toBeNull()
+  it('reads a run just before local midnight on data_through as that day', () => {
+    // 23:30 local at UTC-2 is 01:30Z on the 24th.
+    const history = [point('2027-01-20T08:00:00Z', null, 3060), point('2027-01-24T01:30:00Z', -7200, 3050)]
+    expect(expectedLine(entry({}), history)[0]).toEqual({ date: '2027-01-23', valueS: 3050 })
   })
 
-  it('lists versions in number order whatever order the file lists them in', () => {
-    const detail = {
-      goal_id: 'g',
-      status: 'active',
-      versions: [
-        { number: 2, status: 'proposed', plan: version([], { number: 2 }) },
-        { number: 1, status: 'accepted', plan: version([], { number: 1 }) },
-      ],
-    } as PlanDetail
-    expect(trajectory(detail, 10000).map((p) => p.number)).toEqual([1, 2])
+  it('starts an old version without a series value at its estimate', () => {
+    // Every run is after data_through, or the newest one before has no best-efforts value.
+    expect(expectedLine(entry({}), [point('2027-02-01T08:00:00Z', 0, 3030)])[0]).toEqual({
+      date: '2027-01-23',
+      valueS: 2950,
+    })
+    expect(expectedLine(entry({}), [point('2027-01-20T08:00:00Z', 0, 3060), point('2027-01-22T08:00:00Z', 0, null)])[0]).toEqual({
+      date: '2027-01-23',
+      valueS: 2950,
+    })
+  })
+
+  it('drops the weeks a revision was written after, so the line does not run back from its start', () => {
+    // A revision written on Sunday 14 February: the weeks ending 7 and 14
+    // February have ended and keep their expected_vdot.
+    const expected = [
+      { local_date: '2027-02-07', time_s: 3040 },
+      { local_date: '2027-02-14', time_s: 3030 },
+      { local_date: '2027-02-21', time_s: 3020 },
+      { local_date: '2027-03-13', time_s: 3000 },
+    ]
+    const history = [point('2027-02-13T08:00:00Z', 0, 3025)]
+    expect(expectedLine(entry({ dataThrough: '2027-02-14', expected }), history)).toEqual([
+      { date: '2027-02-14', valueS: 3025 },
+      { date: '2027-02-21', valueS: 3020 },
+      { date: '2027-03-13', valueS: 3000 },
+    ])
+  })
+
+  it('leaves the start out with neither a series value nor an estimate, or without data_through', () => {
+    expect(expectedLine(entry({ estimateS: null }), []).map((p) => p.date)).toEqual(['2027-02-07', '2027-03-13'])
+    expect(expectedLine(entry({ dataThrough: null }), []).map((p) => p.date)).toEqual(['2027-02-07', '2027-03-13'])
+  })
+
+  it('leaves the start out while the history is not known, rather than starting at the estimate', () => {
+    expect(expectedLine(entry({}), null).map((p) => p.date)).toEqual(['2027-02-07', '2027-03-13'])
+  })
+
+  it('is empty for a version without expected_prediction, start and all', () => {
+    expect(expectedLine(entry({ expected: [] }), [point('2027-01-20T08:00:00Z', 0, 3060)])).toEqual([])
   })
 })
 
@@ -580,32 +622,6 @@ describe('archivedByAccepting', () => {
   })
 })
 
-describe('snapshotPrediction', () => {
-  it('reads one model at the goal distance', () => {
-    const v = version([], {
-      snapshot: [
-        { distance_key: '5k', distance_m: 5000, model: 'riegel', predicted_time_s: 1400, low_s: null, high_s: null },
-        { distance_key: '10k', distance_m: 10000, model: 'riegel', predicted_time_s: 2900, low_s: null, high_s: null },
-      ],
-    })
-    expect(snapshotPrediction(v, 'riegel')?.predicted_time_s).toBe(2900)
-    expect(snapshotPrediction(v, 'ordinary_runs')).toBeNull()
-  })
-
-  it('matches a goal distance within half a percent of a prediction distance', () => {
-    const halfSnapshot = [
-      { distance_key: 'half', distance_m: 21097.5, model: 'riegel', predicted_time_s: 6000, low_s: null, high_s: null },
-      { distance_key: '5k', distance_m: 5000, model: 'riegel', predicted_time_s: 1400, low_s: null, high_s: null },
-    ]
-    const half = version([], { snapshot: halfSnapshot })
-    half.goal.distance_m = 21100
-    expect(snapshotPrediction(half, 'riegel')?.predicted_time_s).toBe(6000)
-    const odd = version([], { snapshot: halfSnapshot })
-    odd.goal.distance_m = 5200
-    expect(snapshotPrediction(odd, 'riegel')).toBeNull()
-  })
-})
-
 describe('planSpan', () => {
   it('runs from the first Monday to the day after the last Sunday, the API\'s exclusive end', () => {
     const weeks: S['Week'][] = [
@@ -691,5 +707,39 @@ describe('sessionTarget', () => {
   it('falls back to the session\'s planned distance, then nothing', () => {
     expect(sessionTarget(session('e', '2027-02-02', { planned_distance_m: 7000 }))).toBe('7 km')
     expect(sessionTarget(session('r', '2027-02-02', { kind: 'rest' }))).toBeNull()
+  })
+})
+
+describe('latestBestEffortsS', () => {
+  const point = (start: string, bestS: number | null): S['PredictionHistoryPoint'] => ({
+    activity_id: start,
+    start_time_utc: start,
+    utc_offset_s: 0,
+    best_efforts_vdot: bestS === null ? null : 50,
+    best_efforts_s: bestS,
+    ordinary_runs_s: 3100,
+    ordinary_runs_low_s: 3000,
+    ordinary_runs_high_s: 3200,
+  })
+
+  it('reads the newest point, the row /api/predictions serves, whatever it holds', () => {
+    expect(latestBestEffortsS([point('2027-01-01T08:00:00Z', null), point('2027-01-05T08:00:00Z', 3050)])).toBe(3050)
+    // The newest run has no best-efforts value, so neither has the table: no older value stands in.
+    expect(latestBestEffortsS([point('2027-01-01T08:00:00Z', 3050), point('2027-01-05T08:00:00Z', null)])).toBeNull()
+    expect(latestBestEffortsS([point('2027-01-01T08:00:00Z', null)])).toBeNull()
+    expect(latestBestEffortsS([])).toBeNull()
+  })
+})
+
+describe('measuredFrom', () => {
+  it('reaches a smoothing window before the first week or data_through, whichever is earlier', () => {
+    // The first week starts 1 February; data_through is 23 January.
+    expect(measuredFrom(version([]))).toBe('2026-12-12')
+    expect(measuredFrom(version([], { dataThrough: '2027-02-10' }))).toBe('2026-12-21')
+    expect(measuredFrom(version([], { dataThrough: null }))).toBe('2026-12-21')
+  })
+
+  it('reaches back from the race for a version with no weeks', () => {
+    expect(measuredFrom(version([], { weeks: [], dataThrough: null }))).toBe('2027-01-30')
   })
 })

@@ -112,7 +112,7 @@ def test_fitness_on_gives_garmins_unrounded_vo2max(device_store: duckdb.DuckDBPy
     # from is maxMet x 3.5 as stored, not the whole number the watch shows.
     device_store.execute(
         "CREATE TABLE fitness_series (activity_id VARCHAR, start_time_utc TIMESTAMPTZ, "
-        "hr_vo2max_smoothed DOUBLE, vdot DOUBLE); "
+        "hr_vo2max_smoothed DOUBLE, best_efforts_vdot DOUBLE, vdot DOUBLE); "
         "CREATE TABLE activities (activity_id VARCHAR, utc_offset_s INTEGER)"
     )
     on = queries.fitness_on(device_store.cursor(), on=dt.date(2026, 3, 1))

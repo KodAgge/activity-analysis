@@ -1,6 +1,6 @@
 import { Absent } from '../components/Absent'
 import { calendarDayOfDate, dayMonthLabel } from '../format'
-import { PLAN_CHART_FALLBACK_WIDTH_PX, linearScale, plotBox, vo2maxLadder } from './planChartMath'
+import { PLAN_CHART_FALLBACK_WIDTH_PX, linearScale, plotBox, spanEndLabels, vo2maxLadder } from './planChartMath'
 import type { Ladder, Plot } from './planChartMath'
 import { PlanChartStats } from './PlanChartStats'
 import type { PlanChartStat } from './PlanChartStats'
@@ -10,8 +10,11 @@ import styles from './PlanOutlook.module.css'
 export interface PlanOutlookProps {
   /** From `planLoadMath.outlookSeries`: what the shown version expects, per week. */
   expected: { date: string; vdot: number; garmin: number | null }[]
-  /** From `outlookSeries`: each live version's `estimate_vdot` at its `data_through`. */
-  measured: { date: string; vdot: number }[]
+  /**
+   * From `outlookSeries`: the best-efforts series' VDOT at each run since
+   * the plan's first week, in unbroken runs, each drawn as its own line.
+   */
+  measured: { date: string; vdot: number }[][]
   /** The shown version's `target_vdot`, or null. */
   targetVdot: number | null
   /**
@@ -24,6 +27,8 @@ export interface PlanOutlookProps {
   raceDate: string
   /** Why Garmin's own values are not known yet, or null once they are. */
   deviceNote?: string | null
+  /** Why the measured VDOT is missing, while the prediction history loads or after it failed; null once it is in. */
+  measuredNote?: string | null
 }
 
 /** The outlook's line when no version carries an expected or measured VO2max. */
@@ -110,9 +115,9 @@ function deviceRuns(points: { day: number; value: number }[]): string {
  * Garmin's number sit apart.
  *
  * The upper panel is VDOT, the race-time equivalent: the version's
- * `expected_vdot` per week as a dashed line with hollow points, each
- * version's `estimate_vdot` at its `data_through` as a filled point, and
- * the goal's `target_vdot` as the ink line `PlanTrajectory` draws its
+ * `expected_vdot` per week as a dashed line with hollow points, the
+ * best-efforts series' VDOT at each run since the first week as a solid
+ * line, the one the trajectory draws as a time, and the goal's `target_vdot` as the ink line `PlanTrajectory` draws its
  * target in. The lower is Garmin's own: `expected_garmin_vo2max` per
  * week the same way, and the watch's daily number as a thin solid line
  * that holds each value until the next, since the watch's number is a step.
@@ -135,15 +140,18 @@ export function PlanOutlook({
   startDate,
   raceDate,
   deviceNote = null,
+  measuredNote = null,
 }: PlanOutlookProps) {
   const [panelRef, measuredWidth] = usePanelWidth<HTMLDivElement>()
-  if (expected.length === 0 && measured.length === 0) return <Absent reason={NOTHING_STAMPED} />
+  // With nothing to draw while the history is not in, that is the reason, not the absence of an outlook.
+  if (expected.length === 0 && measured.length === 0) return <Absent reason={measuredNote ?? NOTHING_STAMPED} />
 
   const width = measuredWidth > 0 ? measuredWidth : PLAN_CHART_FALLBACK_WIDTH_PX
   const box = plotBox(width, 0)
 
   const exp = expected.map((e) => ({ ...e, day: calendarDayOfDate(e.date) }))
-  const meas = measured.map((m) => ({ ...m, day: calendarDayOfDate(m.date) }))
+  const measuredRuns = measured.map((run) => run.map((m) => ({ ...m, day: calendarDayOfDate(m.date) })))
+  const meas = measuredRuns.flat()
   const datedDays = [
     calendarDayOfDate(startDate),
     calendarDayOfDate(raceDate),
@@ -153,6 +161,7 @@ export function PlanOutlook({
   const firstDay = Math.min(...datedDays)
   const lastDay = Math.max(...datedDays)
   const x = linearScale(firstDay, lastDay, box.left, box.right)
+  const [firstLabel, lastLabel] = spanEndLabels(firstDay, lastDay)
 
   const expGarmin = exp.flatMap((e) => (e.garmin === null ? [] : [{ day: e.day, value: e.garmin }]))
   const device = deviceNote !== null ? [] : deviceInSpan(garmin, firstDay, lastDay)
@@ -180,6 +189,7 @@ export function PlanOutlook({
     expected.length === 0 ? VERSION_PREDATES : null,
     withGarmin ? null : NO_GARMIN,
     deviceNote,
+    measuredNote,
   ].filter((n) => n !== null)
 
   const described = [
@@ -188,7 +198,10 @@ export function PlanOutlook({
       : `expected VDOT ${exp.map((e) => `${vdotLabel(e.vdot)} by ${dayMonthLabel(e.day)}`).join(', ')}`,
     meas.length === 0
       ? null
-      : `measured VDOT ${meas.map((m) => `${vdotLabel(m.vdot)} on ${dayMonthLabel(m.day)}`).join(', ')}`,
+      : `measured VDOT ${[meas[0], meas.length > 1 ? meas.at(-1) : undefined]
+          .filter((m) => m !== undefined)
+          .map((m) => `${vdotLabel(m.vdot)} on ${dayMonthLabel(m.day)}`)
+          .join(' to ')}`,
     targetVdot === null ? null : `target VDOT ${vdotLabel(targetVdot)}`,
     expGarmin.length === 0
       ? null
@@ -242,16 +255,25 @@ export function PlanOutlook({
               </>
             )}
             <Expected points={exp.map((e) => ({ cx: x(e.day), cy: yVdot(e.vdot) }))} />
-            {meas.map((m) => (
-              <circle
-                key={`${m.date}-${String(m.vdot)}`}
-                className={styles.measured}
-                data-mark="measured"
-                cx={x(m.day)}
-                cy={yVdot(m.vdot)}
-                r={MEASURED_RADIUS_PX}
-              />
-            ))}
+            {measuredRuns.map((run) =>
+              run.length > 1 ? (
+                <polyline
+                  key={run[0]?.date}
+                  className={styles.measured}
+                  data-mark="measured"
+                  points={run.map((m) => `${String(x(m.day))},${String(yVdot(m.vdot))}`).join(' ')}
+                />
+              ) : (
+                <circle
+                  key={run[0]?.date}
+                  className={styles.measuredDot}
+                  data-mark="measured"
+                  cx={x(run[0]?.day ?? firstDay)}
+                  cy={yVdot(run[0]?.vdot ?? vdotLadder.min)}
+                  r={MEASURED_RADIUS_PX}
+                />
+              ),
+            )}
           </g>
           {garminLadder !== null && yGarmin !== null && (
             <g data-panel="garmin">
@@ -276,10 +298,10 @@ export function PlanOutlook({
             </g>
           )}
           <text className={styles.axisLabel} x={box.left} y={axisBottom + DATE_LABEL_DY} textAnchor="start">
-            {dayMonthLabel(firstDay)}
+            {firstLabel}
           </text>
           <text className={styles.axisLabel} x={box.right} y={axisBottom + DATE_LABEL_DY} textAnchor="end">
-            {dayMonthLabel(lastDay)}
+            {lastLabel}
           </text>
         </svg>
       </div>
@@ -296,10 +318,10 @@ export function PlanOutlook({
         )}
         {meas.length > 0 && (
           <li>
-            <svg className={styles.swatch} viewBox="0 0 12 12" width="12" height="12">
-              <circle className={styles.measured} cx="6" cy="6" r={MEASURED_RADIUS_PX} />
+            <svg className={styles.swatch} viewBox="0 0 16 12" width="16" height="12">
+              <line className={styles.measured} x1="0" x2="16" y1="6" y2="6" />
             </svg>
-            Measured when a version was written
+            Measured from best efforts
           </li>
         )}
         {targetVdot !== null && (

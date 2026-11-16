@@ -20,6 +20,13 @@ def test_recompute_writes_a_fitness_row_per_contributing_activity(ingested_store
     assert (rows["analysis_version"] > 0).all()
 
 
+def test_recompute_stores_the_two_prediction_vdot_columns(ingested_store: Paths) -> None:
+    recompute(ingested_store)
+    rows = read_fitness_series(ingested_store)
+    assert {"best_efforts_vdot", "ordinary_runs_vdot"} <= set(rows.columns)
+    assert rows["best_efforts_vdot"].notna().any()
+
+
 def test_every_row_carries_at_least_one_estimate(ingested_store: Paths) -> None:
     """A row with neither estimate would be an activity saying nothing."""
     recompute(ingested_store)

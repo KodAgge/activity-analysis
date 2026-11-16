@@ -341,6 +341,12 @@ It is also null for a treadmill or not-known-outdoors activity, because the spee
 `vdot` is the best Daniels VDOT among the activity's eligible best efforts under the records rule above, and `vdot_distance_key` names the effort it came from.
 `hr_vo2max_smoothed` and `vdot_smoothed` are trailing 42-day means over the contributing activities; they are the reported numbers, and the raw columns are kept so a chart can show what was smoothed.
 `docs/reference/math/vo2max.md` derives both estimators and the smoothing.
+`best_efforts_vdot` and `ordinary_runs_vdot` are the two race prediction series, since `ANALYSIS_VERSION` 16: each run's row holds the series' value on the run's local day.
+The first averages over 42 days the daily mean VDOT of the three best runs in the 90 days up to each day, a run's VDOT being its best over eligible efforts of at least 1 km; the second does the same with each day's latest `hr_vo2max_smoothed` in 90 days, calibrated onto the VDOT scale.
+Both are computed per calendar day in memory, so a day without a run still counts in the 42-day mean, and no daily table is written.
+Either is null where no day of its 42 has a raw value, which for the first means no run with an eligible effort of 1 km or more in the 90 days before any of them.
+No time is stored: the API inverts them at the distance asked for.
+`docs/reference/math/predictions.md` derives both and measures their lag.
 
 ## Threshold heart rate and load
 

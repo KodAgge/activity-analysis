@@ -681,27 +681,28 @@
   white-space: nowrap;
 }
 
-/*
- * A model and its time, on two straight edges rather than as a
- * right-aligned pair.
- *
- * Right-aligned, the three names ran to three different left edges inside
- * every cell, nine times down the table. `space-between` puts each name on
- * the block's left edge and each time on its right, so the sub-block reads
- * as a small list - which is what it is - instead of as ragged text.
- *
- * The name is a bare text node and must stay one: `Trends.test.tsx` finds a
- * model with `getByText(/Riegel/)`, and wrapping it in its own element
- * would make both that element and its parent match. A bare text node is an
- * anonymous flex item, which is all the layout needs.
- */
-.modelPair {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-3);
+/* The history chart's distance picker: the Progression picker's own pills,
+   composed so the two stay one control. */
+.picker {
+  composes: picker from './Progression.module.css';
 }
 
-.modelTime {
-  color: var(--ink);
-  font-weight: var(--weight-medium);
+.pills {
+  composes: pills from './Progression.module.css';
+}
+
+.pill {
+  composes: pill from './Progression.module.css';
+}
+
+.pillInput {
+  composes: pillInput from './Progression.module.css';
+}
+
+.pillBody {
+  composes: pillBody from './Progression.module.css';
+}
+
+.pickerLabel {
+  composes: pickerLabel from './Progression.module.css';
 }

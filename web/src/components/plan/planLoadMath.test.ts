@@ -181,35 +181,76 @@ describe('weeklyZoneMix', () => {
 })
 
 describe('outlookSeries', () => {
-  function entry(number: number, status: S['PlanVersionEntry']['status'], p: S['PlanVersion']): S['PlanVersionEntry'] {
-    return { number, status, plan: p }
+  function point(start: string, offset: number | null, vdot: number | null): S['PredictionHistoryPoint'] {
+    return {
+      activity_id: start,
+      start_time_utc: start,
+      utc_offset_s: offset,
+      best_efforts_vdot: vdot,
+      best_efforts_s: vdot === null ? null : 3000,
+      ordinary_runs_s: 3100,
+      ordinary_runs_low_s: 3000,
+      ordinary_runs_high_s: 3200,
+    }
   }
 
-  it('skips versions without a stamp, and withdrawn or rejected ones', () => {
+  it('expects each stamped week at its Sunday, the last at the race', () => {
     const shown = plan(
       [
         week('2027-02-01', { expected_vdot: 50, expected_garmin_vo2max: 52 }),
         week('2027-02-08'),
         week('2027-02-15', { expected_vdot: 51 }),
       ],
-      { number: 3, estimate_vdot: 49.5, target_vdot: 52 },
+      { target_vdot: 52 },
     )
-    const detail = {
-      goal_id: 'g',
-      status: 'active',
-      versions: [
-        entry(1, 'superseded', plan([], { number: 1 })),
-        entry(2, 'rejected', plan([], { number: 2, estimate_vdot: 40, data_through: '2027-01-10' })),
-        entry(3, 'accepted', shown),
-      ],
-    } as unknown as S['PlanDetail']
-    const out = outlookSeries(detail)
+    const out = outlookSeries(shown, [], '2027-02-01')
     expect(out.expected).toEqual([
       { date: '2027-02-07', vdot: 50, garmin: 52 },
       { date: '2027-03-13', vdot: 51, garmin: null },
     ])
-    expect(out.measured).toEqual([{ date: '2027-01-23', vdot: 49.5 }])
+    expect(out.measured).toEqual([])
     expect(out.targetVdot).toBe(52)
+  })
+
+  it('measures the best-efforts series from the first week on, one point per run with a value', () => {
+    const history = [
+      point('2027-01-31T12:00:00Z', 0, 48.9),
+      // 23:30Z on 31 January is 1 February at UTC+1, the first week's Monday.
+      point('2027-01-31T23:30:00Z', 3600, 49.1),
+      point('2027-02-03T08:00:00Z', 3600, null),
+      point('2027-02-05T08:00:00Z', 3600, 49.4),
+    ]
+    // The run without a value breaks the line, as the trajectory's does.
+    expect(outlookSeries(plan([week('2027-02-01')]), history, '2027-02-01').measured).toEqual([
+      [{ date: '2027-02-01', vdot: 49.1 }],
+      [{ date: '2027-02-05', vdot: 49.4 }],
+    ])
+  })
+
+  it('measures nothing after the race', () => {
+    // The race is 13 March; a run that evening counts, the next day's does not.
+    const history = [point('2027-03-10T08:00:00Z', 0, 49.0), point('2027-03-13T18:00:00Z', 0, 49.2), point('2027-03-14T08:00:00Z', 0, 49.5)]
+    expect(outlookSeries(plan([week('2027-02-01')]), history, '2027-02-01').measured).toEqual([
+      [
+        { date: '2027-03-10', vdot: 49.0 },
+        { date: '2027-03-13', vdot: 49.2 },
+      ],
+    ])
+  })
+
+  it('breaks the measured line where runs are more than six weeks apart', () => {
+    const history = [
+      point('2027-01-04T08:00:00Z', 0, 48.0),
+      point('2027-01-10T08:00:00Z', 0, 48.2),
+      point('2027-03-01T08:00:00Z', 0, 49.0),
+    ]
+    expect(outlookSeries(plan([week('2027-02-01')]), history, '2026-12-01').measured).toEqual([
+      [
+        { date: '2027-01-04', vdot: 48.0 },
+        { date: '2027-01-10', vdot: 48.2 },
+      ],
+      [{ date: '2027-03-01', vdot: 49.0 }],
+    ])
   })
 })
 

@@ -1108,17 +1108,14 @@ def recent_eligible_efforts(
 ) -> list[dict[str, Any]]:
     """The best eligible effort per distance in the trailing window, shortest first.
 
-    The inputs to the best-effort race models. Eligibility is ``records``'s
-    rule, through the same ``_EFFORT_ELIGIBLE_SQL``, with a missing metrics
-    row excluded like a treadmill. The window is
-    ``window_days`` ending at the most recent run in the store, so the answer
-    is a function of the store alone.
+    The plan context's ``recent_best_efforts``, which the training plan's
+    race estimate reads. Eligibility is ``records``'s rule, through the same
+    ``_EFFORT_ELIGIBLE_SQL``, with a missing metrics row excluded like a
+    treadmill. The window is ``window_days`` ending at the most recent run in
+    the store, so the answer is a function of the store alone.
 
-    Only ``VDOT_DISTANCES_M`` are considered, not every extracted distance.
-    The prediction models' candidate set is a modelling choice rather than a
-    display one, so adding a rung to the records ladder must not silently
-    move the anchor the race models extrapolate from. See
-    ``analysis/best_efforts.py``.
+    Only ``VDOT_DISTANCES_M`` are considered, the prediction series' candidate
+    set, not every extracted distance. See ``analysis/best_efforts.py``.
     """
     rows: list[dict[str, Any]] = (
         cur.execute(
@@ -1144,25 +1141,53 @@ def recent_eligible_efforts(
     return rows
 
 
-def latest_hr_vo2max_smoothed(cur: duckdb.DuckDBPyConnection, *, window_days: int) -> float | None:
-    """The reported heart-rate VO2max as of the last contributing run in the window.
+def latest_prediction_vdots(
+    cur: duckdb.DuckDBPyConnection,
+) -> tuple[float | None, float | None]:
+    """The two prediction VDOTs on the newest ``fitness_series`` row that has either.
 
-    The input to the ordinary-run prediction. ``None`` when no run in the
-    window carries a smoothed estimate, which the prediction reports as a
-    stated absence rather than falling back to an older value.
+    ``(best_efforts_vdot, ordinary_runs_vdot)``, each ``None`` where that
+    row has no value. Both are smoothed and the ordinary-run one is already
+    calibrated, so ``race_predictions`` only inverts them. ``(None, None)``
+    when no row has either, which is a stated absence rather than a fallback
+    to an older value.
     """
     row = cur.execute(
-        f"""
-        SELECT hr_vo2max_smoothed
+        """
+        SELECT best_efforts_vdot, ordinary_runs_vdot
         FROM fitness_series
-        WHERE hr_vo2max_smoothed IS NOT NULL
-          AND start_time_utc >= {_LATEST_RUN_SQL} - to_days(?)
+        WHERE best_efforts_vdot IS NOT NULL OR ordinary_runs_vdot IS NOT NULL
         ORDER BY start_time_utc DESC, activity_id DESC
         LIMIT 1
-        """,
-        [window_days],
+        """
     ).fetchone()
-    return None if row is None else float(row[0])
+    if row is None:
+        return None, None
+    return (None if row[0] is None else float(row[0]), None if row[1] is None else float(row[1]))
+
+
+def prediction_vdot_history(cur: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
+    """Every ``fitness_series`` row with either prediction VDOT, oldest first.
+
+    The same rows ``latest_prediction_vdots`` picks its newest from, in the
+    same order, so the last element here is what ``/api/predictions`` inverts.
+    Each row carries its run's ``utc_offset_s`` from ``activities``, as
+    ``fitness_on`` joins it, so a view dates the point by its own offset.
+    """
+    rows: list[dict[str, Any]] = (
+        cur.execute(
+            """
+            SELECT f.activity_id, f.start_time_utc, a.utc_offset_s,
+                   f.best_efforts_vdot, f.ordinary_runs_vdot
+            FROM fitness_series f JOIN activities a ON a.activity_id = f.activity_id
+            WHERE f.best_efforts_vdot IS NOT NULL OR f.ordinary_runs_vdot IS NOT NULL
+            ORDER BY f.start_time_utc, f.activity_id
+            """
+        )
+        .to_arrow_table()
+        .to_pylist()
+    )
+    return rows
 
 
 def effort_source(
@@ -1202,10 +1227,12 @@ def effort_source(
 def fitness_on(cur: duckdb.DuckDBPyConnection, *, on: date) -> dict[str, Any]:
     """The fitness estimates in force on a local date, each None when none is.
 
-    ``hr_vo2max_smoothed`` and ``vdot`` are the latest ``fitness_series``
-    row's on or before ``on``, read as stored: the smoothed estimate is the
-    number the app reports, and ``vdot`` is that run's own, null when the run
-    held no eligible effort. ``garmin_vo2max`` is Garmin's value on the latest
+    ``hr_vo2max_smoothed``, ``best_efforts_vdot`` and ``vdot`` are the latest
+    ``fitness_series`` row's on or before ``on``, read as stored: the smoothed
+    estimate is the number the app reports, ``best_efforts_vdot`` is the
+    prediction series' smoothed value a plan's ``expected_vdot`` starts from,
+    and ``vdot`` is that run's own, null when the run held no eligible
+    effort. ``garmin_vo2max`` is Garmin's value on the latest
     day on or before ``on``, unrounded (``maxMet`` x 3.5), since the plan's
     VO2max outlook works to a decimal; the watch shows it rounded.
 
@@ -1215,10 +1242,10 @@ def fitness_on(cur: duckdb.DuckDBPyConnection, *, on: date) -> dict[str, Any]:
     """
     estimate = cur.execute(
         f"""
-        SELECT hr_vo2max_smoothed, vdot
+        SELECT hr_vo2max_smoothed, best_efforts_vdot, vdot
         FROM (
             SELECT f.activity_id, f.start_time_utc, a.utc_offset_s,
-                   f.hr_vo2max_smoothed, f.vdot
+                   f.hr_vo2max_smoothed, f.best_efforts_vdot, f.vdot
             FROM fitness_series f JOIN activities a ON a.activity_id = f.activity_id
         )
         WHERE {LOCAL_DATE_SQL} <= ?
@@ -1234,7 +1261,8 @@ def fitness_on(cur: duckdb.DuckDBPyConnection, *, on: date) -> dict[str, Any]:
     ).fetchone()
     return {
         "hr_vo2max_smoothed": None if estimate is None else estimate[0],
-        "vdot": None if estimate is None else estimate[1],
+        "best_efforts_vdot": None if estimate is None else estimate[1],
+        "vdot": None if estimate is None else estimate[2],
         "garmin_vo2max": None if device is None else device[0],
     }
 

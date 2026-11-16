@@ -65,6 +65,8 @@ A draft holds:
 - `assessment`: `summary`, `estimate_s`, `estimate_reasoning`, `verdict` (`likely`, `possible` or `unlikely`) and `citations`, each a `label` and a JSON Pointer into the context.
   `estimate_s` is null when no recent effort supports an estimate; check 11 below then requires a time trial.
 - `weeks`: each with `start_date`, `phase`, `focus`, `planned_distance_m`, `detailed` and `sessions`, and three optional outlook fields: `planned_zone_minutes`, exactly five non-negative minutes in heart-rate zones 1 to 5, `expected_vdot` and `expected_garmin_vo2max`, both positive.
+  `expected_vdot` is the value the best-efforts prediction series is expected to have at the end of the week, not Claude's race estimate: it starts at the series' value at `data_through` and trails the training: a held rise is all in after 45 days and a steady rise shows about 23 days late, as `docs/reference/math/predictions.md`, "The lag", measures.
+  Versions stored before 2026-11-16 started it from `estimate_vdot` and keep that curve.
   A week may also carry `load_note`, one or two sentences on how to run the week given its expected fitness and fatigue, which the week PDF and the copied week print; check 20 requires it on a detailed week that has not ended.
   The week's planned TRIMP is `sum(minutes[i] * trimp_per_minute[i])`, `planned_trimp` in `models.py`, with the athlete's TRIMP per minute in each zone that `propose` stamps on the version as `provenance.trimp_per_minute`.
   It is null when a zone with planned minutes has no factor, and a version without the stamp has no planned TRIMP.
@@ -128,7 +130,10 @@ The schema refuses a malformed file.
 19. In such a detailed week that holds no session dated on or before `data_through`, `sum(planned_zone_minutes)` is within 10% (`ZONE_MINUTES_TOLERANCE`) of the running sessions' `planned_duration_s` summed, in minutes.
     Checks 17 to 19 skip sessions check 8 has frozen, and 19 skips a week holding one, whose total cannot be checked against durations nobody can change.
 20. In such a detailed week, `load_note` is set and not blank.
-    A closing version, one with a `result`, is exempt from checks 16 to 20.
+21. The first such week's `expected_vdot` is within `EXPECTED_VDOT_START_TOLERANCE` (1.9 VDOT units) of the context's `fitness_now.best_efforts_vdot`, the prediction series' value at `data_through`.
+    The tolerance is the largest 7 day change of that value over a year of the real store, measured 2026-11-16, which is how far the series can move before the week ends.
+    The check is skipped when the context holds no series value.
+    A closing version, one with a `result`, is exempt from checks 16 to 21.
 
 Checks 8, 10, 13 and 14 compare against the goal's `accepted` version, and check 11's window and check 12's allowance for a removed session depend on it, so they do not apply to a goal never accepted, and a pending version is never the reference.
 
@@ -154,7 +159,7 @@ Every expected failure, a refused draft or an unreadable file under `data/plans/
 
 `GET /api/plans` lists the goals, newest first, each with its status, its distance, target time and race date, and its accepted and pending version numbers.
 The goal's figures come from its pending version, else its accepted one, else its newest, `PlanStore.current`, so a rejected revision does not speak for the goal; `plan list` takes the race date from the same version.
-`GET /api/plans/{goal_id}` serves the goal and every version, oldest first, each with its status and plan.
+`GET /api/plans/{goal_id}` serves the goal and every version, oldest first, each with its status, its plan and `expected_prediction`, the time at the goal distance each week's `expected_vdot` implies, dated its Sunday or the race date.
 Both read the files and never DuckDB, like the basemap; the context files are not served.
 An id that does not match the goal id pattern, or a directory without `index.json`, is 404, and a file that does not validate is 503 naming it.
 `docs/reference/api.md` has the response shapes.
@@ -192,9 +197,9 @@ It introduces no metric: every figure is read through the query and analysis fun
 | `load` | The daily training load series, `local_date`, `trimp`, `ctl`, `atl`, `form` and `distance_7d_m`, the rolling seven day distance, from 84 days before `generated_for` through it. The series ends at the newest run's day, so it may end before `generated_for`. |
 | `recent_runs` | Every run from 84 days before `generated_for` through it, oldest first: activity id, local date, distance, moving time, average speed and heart rate, `indoor`, tags, time per zone, `decoupling_pct`, `trimp`, `rest_from_setting` and `estimated_zone_s`, seconds in the five estimated zones. `trimp` is null and `estimated_zone_s` empty for a run without heart rate. `rest_from_setting` is true when the run's rest came from the device's resting setting, because no measured rest was 90 days or less old, whether or not the run had heart rate to weigh. |
 | `weekly` | 26 weeks of run count, distance and moving time, ending with the current week, each with `trimp` and `zone_minutes`, minutes in the five estimated zones. `trimp` is null for a week whose runs all lack heart rate, `zone_minutes` for a week whose runs all lack estimated zones (no heart rate, or before the first threshold estimate), and both are zero for a week without runs. |
-| `predictions` | `/api/predictions`' payload, plus `anchor`, the effort the best-effort models convert from, and `recent_best_efforts`, the window's best effort at each prediction distance with its activity id and local date. |
+| `predictions` | `/api/predictions`' payload, plus `recent_best_efforts`, the window's best effort at each prediction distance with its activity id and local date. |
 | `records` | The all-time record at each prediction distance, as `/api/records` serves it, plus `local_date` and `fitness_then`. |
-| `fitness_now` | `hr_vo2max_smoothed`, `vdot` and `garmin_vo2max` in force on `generated_for`. |
+| `fitness_now` | `hr_vo2max_smoothed`, `best_efforts_vdot`, `vdot` and `garmin_vo2max` in force on `generated_for`. `best_efforts_vdot` is the prediction series' smoothed value, null when the series has none, and is where `expected_vdot` starts. `anchor` no longer exists: predictions are no longer converted from one effort. |
 | `trends` | `/api/trends`' payload, with points from 84 days before `generated_for` through it. |
 | `plan` | The active goal, else the newest goal with a pending version: `goal_id`, `accepted`, `pending`, and `pending_new_goal`, another goal's first version awaiting a verdict. Null when there is neither. |
 
@@ -234,7 +239,7 @@ Run `plan context` again after either before writing pointers.
 A figure a change's reason quotes is cited in `assessment.citations`, which is the only list `propose` resolves.
 
 **The predictions' 90-day window ends at the newest run, not at `--today`.**
-On a stale store, `recent_best_efforts` and `anchor` describe the 90 days before the newest run, while `recent_runs` and `trends` count back from `--today` and may be empty.
+On a stale store, `recent_best_efforts` describes the 90 days before the newest run, while `recent_runs` and `trends` count back from `--today` and may be empty.
 
 **Frozen means unchanged against the accepted version.**
 A draft that replaces a pending revision still has to keep the accepted version's past sessions, whatever the pending one did to them.

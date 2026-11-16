@@ -17,16 +17,16 @@ import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from activity_analysis.analysis.fitness import PREDICTION_WINDOW_DAYS, prediction_anchor
+from activity_analysis.analysis.fitness import PREDICTION_WINDOW_DAYS
 from activity_analysis.analysis.pipeline import recompute
 from activity_analysis.api import queries
 from activity_analysis.config import Paths
 from activity_analysis.plan.context import build_context
+from activity_analysis.plan.models import PlanDraft
 from activity_analysis.plan.store import PlanStore
 from activity_analysis.store.db import connect
 from activity_analysis.store.writer import (
     read_activities,
-    read_best_efforts,
     read_fitness_series,
     upsert_activities,
 )
@@ -70,25 +70,26 @@ def test_context_predictions_equal_what_the_api_serves(
     assert context["predictions"]["reason"] == served["reason"]
 
 
-def test_the_anchor_is_the_effort_race_predictions_extrapolates_from(
+def test_context_predictions_carry_no_anchor(
     cur: duckdb.DuckDBPyConnection, ingested_store: Paths
 ) -> None:
     context = _context(cur, ingested_store, _newest_run(ingested_store) + timedelta(days=1))
-    expected = prediction_anchor(
-        queries.recent_eligible_efforts(cur, window_days=PREDICTION_WINDOW_DAYS)
-    )
-    assert expected is not None
-    anchor = context["predictions"]["anchor"]
-    assert anchor["elapsed_time_s"] == expected["elapsed_time_s"]
-    assert anchor["distance_key"] == expected["distance_key"]
+    assert "anchor" not in context["predictions"]
+    assert context["predictions"]["recent_best_efforts"]
 
-    efforts = read_best_efforts(ingested_store)
-    held = efforts[
-        (efforts["activity_id"] == anchor["activity_id"])
-        & (efforts["distance_key"] == anchor["distance_key"])
-    ]
-    assert list(held["elapsed_time_s"]) == [anchor["elapsed_time_s"]]
-    assert anchor["local_date"] == _local_dates(ingested_store)[anchor["activity_id"]].isoformat()
+
+def test_context_fitness_now_carries_best_efforts_vdot(
+    cur: duckdb.DuckDBPyConnection, ingested_store: Paths
+) -> None:
+    context = _context(cur, ingested_store, _newest_run(ingested_store) + timedelta(days=1))
+    series = read_fitness_series(ingested_store).sort_values(["start_time_utc", "activity_id"])
+    expected = series["best_efforts_vdot"].iloc[-1]
+    served = context["fitness_now"]["best_efforts_vdot"]
+    if pd.isna(expected):
+        assert served is None
+    else:
+        assert served == pytest.approx(expected)
+    assert context["fitness_now"]["vdot"] is not None or served is None
 
 
 def test_context_records_carry_the_fitness_in_force_on_their_day(
@@ -116,6 +117,7 @@ def test_context_records_carry_the_fitness_in_force_on_their_day(
 def test_fitness_on_a_day_before_any_run_is_all_none(cur: duckdb.DuckDBPyConnection) -> None:
     assert queries.fitness_on(cur, on=date(2000, 1, 1)) == {
         "hr_vo2max_smoothed": None,
+        "best_efforts_vdot": None,
         "vdot": None,
         "garmin_vo2max": None,
     }
@@ -247,17 +249,23 @@ def test_context_is_json_serialisable(
     assert context["profile"]["zone_boundaries_bpm"] == queries.current_zone_boundaries(cur)
 
 
+def _on_series(draft: PlanDraft, context: dict[str, Any]) -> PlanDraft:
+    """``draft`` with every week's expected VDOT at the series' value, where check 21 looks."""
+    start = context["fitness_now"]["best_efforts_vdot"]
+    data = draft.model_dump()
+    for week in data["weeks"]:
+        week["expected_vdot"] = start if start is not None else week["expected_vdot"]
+    return PlanDraft.model_validate(data)
+
+
 def test_context_carries_the_active_plan(
     cur: duckdb.DuckDBPyConnection, ingested_store: Paths
 ) -> None:
     today = _newest_run(ingested_store) + timedelta(days=1)
     store = PlanStore(ingested_store)
     draft = five_week_draft(goal=five_week_draft().goal.model_dump() | {"goal_id": "5k-2027-03-13"})
-    store.propose(
-        draft,
-        build_context(cur, today=today, store=store),
-        now=datetime(2026, 11, 14, 12, 0, tzinfo=UTC),
-    )
+    seen = build_context(cur, today=today, store=store)
+    store.propose(_on_series(draft, seen), seen, now=datetime(2026, 11, 14, 12, 0, tzinfo=UTC))
 
     context = build_context(cur, today=today, store=store)
     assert context["plan"]["goal_id"] == "5k-2027-03-13"
@@ -279,15 +287,17 @@ def test_context_shows_a_new_goal_proposed_while_another_is_active(
     store = PlanStore(ingested_store)
     base = five_week_draft().goal.model_dump()
     now = datetime(2026, 11, 14, 12, 0, tzinfo=UTC)
+    seen = build_context(cur, today=today, store=store)
     store.propose(
-        five_week_draft(goal=base | {"goal_id": "5k-2027-03-13"}),
-        build_context(cur, today=today, store=store),
+        _on_series(five_week_draft(goal=base | {"goal_id": "5k-2027-03-13"}), seen),
+        seen,
         now=now,
     )
     store.accept("5k-2027-03-13")
+    seen = build_context(cur, today=today, store=store)
     store.propose(
-        five_week_draft(goal=base | {"goal_id": "10k-2027-03-01"}),
-        build_context(cur, today=today, store=store),
+        _on_series(five_week_draft(goal=base | {"goal_id": "10k-2027-03-01"}), seen),
+        seen,
         now=now + timedelta(days=1),
     )
 

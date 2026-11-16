@@ -173,8 +173,16 @@ function summary(over: Partial<PlanSummary> = {}): PlanSummary {
   }
 }
 
-function detail(versions: S['PlanVersionEntry'][], over: Partial<PlanDetail> = {}): PlanDetail {
-  return { goal_id: GOAL_ID, status: 'active', versions, ...over }
+/** A version as a fixture states it: without an expected line unless the test gives one. */
+type EntryFixture = Omit<S['PlanVersionEntry'], 'expected_prediction'> & Partial<Pick<S['PlanVersionEntry'], 'expected_prediction'>>
+
+function detail(versions: EntryFixture[], over: Partial<PlanDetail> = {}): PlanDetail {
+  return {
+    goal_id: GOAL_ID,
+    status: 'active',
+    versions: versions.map((v) => ({ expected_prediction: [], ...v })),
+    ...over,
+  }
 }
 
 const REVISED: PlanDetail = detail([
@@ -208,7 +216,8 @@ const THRESHOLD: S['Threshold'] = {
  * `/api/plans` answers `plans`; `/api/plans/{goal_id}` answers the matching
  * detail or a 404; `/api/activities` answers the `runs` whose UTC date is
  * in `[from, to)` as one page; `/api/training-load` answers `loads` and `weeks`,
- * `/api/threshold` `threshold` and `/api/fitness` no VO2max at all.
+ * `/api/threshold` `threshold`, `/api/predictions/history` `history` at
+ * whatever distance is asked, and `/api/fitness` no VO2max at all.
  */
 function mockPlans(
   plans: PlanSummary[],
@@ -218,11 +227,20 @@ function mockPlans(
     loads = [],
     weeks = [],
     threshold = THRESHOLD,
-  }: { loads?: S['RunLoad'][]; weeks?: S['LoadWeek'][]; threshold?: S['Threshold'] } = {},
+    history = [],
+  }: {
+    loads?: S['RunLoad'][]
+    weeks?: S['LoadWeek'][]
+    threshold?: S['Threshold']
+    history?: S['PredictionHistoryPoint'][]
+  } = {},
 ): void {
   getMock.mockImplementation((path: string, init?: MockInit) => {
     const ok = (data: unknown) => Promise.resolve({ data, error: undefined, response: new Response() })
     if (path === '/api/training-load') return ok({ days: [], weeks, runs: loads })
+    if (path === '/api/predictions/history') {
+      return ok({ distance_m: init?.params?.query?.distance_m, points: history })
+    }
     if (path === '/api/threshold') return ok(threshold)
     if (path === '/api/fitness') return ok({ items: [], device: [] })
     if (path === '/api/activities') {
@@ -252,7 +270,7 @@ function mockPlans(
 
 /** What the mocked client is handed: a path's parameters and a query. */
 interface MockInit {
-  params?: { path?: { goal_id?: string }; query?: { from?: string; to?: string } }
+  params?: { path?: { goal_id?: string }; query?: { from?: string; to?: string; distance_m?: number } }
 }
 
 function renderPlan(path: string, today: Date) {
@@ -320,12 +338,40 @@ beforeEach(() => {
   getMock.mockReset()
 })
 
+/** One run's predictions at the goal distance, in the CET of the runs above. */
+function historyPoint(start: string, bestS: number | null, ordinaryS: number | null): S['PredictionHistoryPoint'] {
+  return {
+    activity_id: start,
+    start_time_utc: start,
+    utc_offset_s: 3600,
+    best_efforts_vdot: bestS === null ? null : 38,
+    best_efforts_s: bestS,
+    ordinary_runs_s: ordinaryS,
+    ordinary_runs_low_s: ordinaryS === null ? null : ordinaryS - 60,
+    ordinary_runs_high_s: ordinaryS === null ? null : ordinaryS + 60,
+  }
+}
+
+/** One run before the plan's first week, then three in its first two weeks, newest 25:45. */
+const HISTORY = [
+  historyPoint('2027-02-01T06:30:00Z', 1580, 1660),
+  historyPoint('2027-02-09T06:30:00Z', 1555, 1650),
+  historyPoint('2027-02-16T06:30:00Z', 1548, 1645),
+  historyPoint('2027-02-18T06:30:00Z', 1545, 1640),
+]
+
+/** The distances `/api/predictions/history` was asked for, in order. */
+function historyRequests(): number[] {
+  return getMock.mock.calls
+    .filter(([path]) => path === '/api/predictions/history')
+    .map(([, init]) => (init as MockInit).params?.query?.distance_m ?? Number.NaN)
+}
 
 /** Text drawn for the eye only, such as the feasibility scale's step names, which repeat the word. */
 const HIDDEN = '[aria-hidden="true"], [aria-hidden="true"] *'
 describe('Plan', () => {
   it('the header states the goal, the countdown and Claude\'s estimate', async () => {
-    mockPlans([summary()], [REVISED])
+    mockPlans([summary()], [REVISED], [], { history: HISTORY })
     renderPlan('/plan', new Date(2027, 1, 19))
 
     // The pending version is shown, so the target is its 25:15.
@@ -339,14 +385,17 @@ describe('Plan', () => {
     const facts = within(header).getAllByRole('listitem').map((li) => li.textContent)
     expect(facts.slice(0, 3)).toEqual(['13 March', 'Track', 'Target pace 5:03/km'])
     expect(within(header).getByText('Race day').nextSibling).toHaveTextContent('22 days to go')
-    // Best efforts 1548 s and Claude's 1520 s.
-    expect(within(header).getByText('Predicted, best efforts').nextSibling).toHaveTextContent('25:48')
+    // The newest run's best-efforts time, 1545 s, and Claude's 1520 s. The
+    // version's own snapshot, 1548 s, is not read.
+    await waitFor(() =>
+      expect(within(header).getByText('Predicted today, best efforts').nextSibling).toHaveTextContent('25:45'),
+    )
     expect(within(header).getByText("Claude's estimate").nextSibling).toHaveTextContent('25:20')
-    // The ordinary-run prediction, 1652 s with its band, is not the plan's
-    // evidence and is shown nowhere on the page.
-    expect(screen.queryByText(/ordinary runs/i)).toBeNull()
-    expect(screen.queryByText('27:32')).toBeNull()
-    expect(screen.queryByText(/26:18/)).toBeNull()
+    expect(header).not.toHaveTextContent('25:48')
+    // The ordinary-run prediction is not the plan's evidence: the header
+    // carries no time of its own for it.
+    expect(header).not.toHaveTextContent(/ordinary/i)
+    expect(header).not.toHaveTextContent('27:20')
     expect(header).toHaveTextContent('Written by Claude on 18 February from runs through 18 February')
   })
 
@@ -680,17 +729,101 @@ describe('Plan', () => {
     expect(within(volume).queryByRole('status')).toBeNull()
   })
 
-  it('the trajectory charts the best-effort prediction of each live version against the target', async () => {
-    mockPlans([summary()], [REVISED])
+  it('the trajectory draws the shown version\'s expected line against the measured ones and the target', async () => {
+    const expected = [
+      { local_date: '2027-02-21', time_s: 1540 },
+      { local_date: '2027-03-13', time_s: 1520 },
+    ]
+    const revised = detail([
+      { number: 1, status: 'accepted', plan: ACCEPTED_V1 },
+      { number: 2, status: 'proposed', plan: PENDING_V2, expected_prediction: expected },
+    ])
+    mockPlans([summary()], [revised], [], { history: HISTORY })
     renderPlan('/plan', new Date(2027, 1, 19))
 
     const section = await findSection('Trajectory')
     expect(section).toHaveTextContent('5 km')
-    const chart = within(section).getByRole('img', { name: /Best-effort prediction per plan version/ })
-    // Both versions predicted 1548 s; the shown proposal's target is 25:15.
-    expect(chart.getAttribute('aria-label')).toContain('version 1, 6 Feb: 25:48')
-    expect(chart.getAttribute('aria-label')).toContain('version 2, 18 Feb: 25:48')
+    // The measured lines start six weeks before the first week, so the run
+    // on 1 February, before the plan, is the line the plan starts from.
+    const chart = await within(section).findByRole('img', { name: /best efforts 26:20 on 1 Feb to 25:45 on 18 Feb/ })
+    const name = chart.getAttribute('aria-label') ?? ''
+    // The shown proposal's line starts at its data_through, 18 February,
+    // on the newest run on or before that day: 25:45.
+    expect(name).toContain('expected 25:45 on 18 Feb to 25:20 on 13 Mar')
+    expect(name).toContain('ordinary runs 27:40 on 1 Feb to 27:20 on 18 Feb')
     expect(within(section).getByText('Target 25:15')).toBeInTheDocument()
+    // The prediction history is asked for at the goal's own distance.
+    expect(historyRequests()).toEqual([5000])
+  })
+
+  it('says the measured predictions are loading, and starts no expected line on a guess meanwhile', async () => {
+    const expected = [{ local_date: '2027-02-21', time_s: 1540 }]
+    mockPlans([summary({ pending_version: null })], [detail([{ number: 1, status: 'accepted', plan: ACCEPTED_V1, expected_prediction: expected }])])
+    const answer = getMock.getMockImplementation()
+    if (answer === undefined) throw new Error('mockPlans set no implementation')
+    getMock.mockImplementation((path: string, init?: unknown) =>
+      path === '/api/predictions/history' ? new Promise(() => {}) : answer(path, init),
+    )
+    renderPlan('/plan', new Date(2027, 1, 19))
+
+    const section = await findSection('Trajectory')
+    expect(within(section).getByRole('status')).toHaveTextContent('Loading the measured predictions.')
+    // Not Claude's estimate at data_through: the series value is not known yet.
+    expect(within(section).getByRole('img').getAttribute('aria-label')).toContain('expected 25:40 on 21 Feb;')
+    const outlook = await findSection('VO2max outlook')
+    expect(outlook).toHaveTextContent('Loading the measured predictions.')
+  })
+
+  it('says the measured predictions could not be loaded', async () => {
+    mockPlans([summary({ pending_version: null })], [detail([{ number: 1, status: 'accepted', plan: ACCEPTED_V1 }])])
+    const answer = getMock.getMockImplementation()
+    if (answer === undefined) throw new Error('mockPlans set no implementation')
+    getMock.mockImplementation((path: string, init?: unknown) =>
+      path === '/api/predictions/history'
+        ? Promise.resolve({ data: undefined, error: { detail: 'store unreadable' }, response: new Response(null, { status: 503 }) })
+        : answer(path, init),
+    )
+    renderPlan('/plan', new Date(2027, 1, 19))
+
+    const section = await findSection('Trajectory')
+    await waitFor(() =>
+      expect(within(section).getByRole('status')).toHaveTextContent('The measured predictions could not be loaded: store unreadable'),
+    )
+  })
+
+  it('starts a goal under a kilometre at Claude\'s estimate, asking for no history', async () => {
+    const plan = planVersion({ number: 1, distanceM: 800, targetS: 150 })
+    const expected = [{ local_date: '2027-02-21', time_s: 160 }]
+    mockPlans([summary({ pending_version: null, distance_m: 800 })], [detail([{ number: 1, status: 'accepted', plan, expected_prediction: expected }])])
+    renderPlan('/plan', new Date(2027, 1, 19))
+
+    const section = await findSection('Trajectory')
+    expect(within(section).getByRole('img').getAttribute('aria-label')).toContain('expected 25:20 on 5 Feb to 2:40 on 21 Feb')
+    expect(within(section).queryByRole('status')).toBeNull()
+    expect(historyRequests()).toEqual([])
+  })
+
+  it('asks for no history for a goal past 100 km, which the API refuses', async () => {
+    const plan = planVersion({ number: 1, distanceM: 160934, targetS: 86400 })
+    const expected = [{ local_date: '2027-02-21', time_s: 90000 }]
+    mockPlans([summary({ pending_version: null, distance_m: 160934 })], [detail([{ number: 1, status: 'accepted', plan, expected_prediction: expected }])])
+    renderPlan('/plan', new Date(2027, 1, 19))
+
+    const section = await findSection('Trajectory')
+    expect(within(section).queryByRole('status')).toBeNull()
+    expect(historyRequests()).toEqual([])
+  })
+
+  it('draws a 7.5 km goal', async () => {
+    const plan = planVersion({ number: 1, distanceM: 7500, targetS: 2400 })
+    mockPlans([summary({ pending_version: null, distance_m: 7500 })], [detail([{ number: 1, status: 'accepted', plan }])], [], {
+      history: HISTORY,
+    })
+    renderPlan('/plan', new Date(2027, 1, 19))
+
+    const section = await findSection('Trajectory')
+    await within(section).findByRole('img', { name: /best efforts/ })
+    expect(historyRequests()).toEqual([7500])
   })
 
   it('the calendar marks the sessions a shown proposal changes, and only then', async () => {

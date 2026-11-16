@@ -68,7 +68,11 @@ def test_an_ordinary_run_model_requires_its_band() -> None:
 def test_a_best_effort_model_may_omit_the_band() -> None:
     assert (
         RaceModel(
-            model="riegel", predicted_time_s=1500.0, low_s=None, high_s=None, source="best_efforts"
+            model="best_efforts",
+            predicted_time_s=1500.0,
+            low_s=None,
+            high_s=None,
+            source="best_efforts",
         ).low_s
         is None
     )

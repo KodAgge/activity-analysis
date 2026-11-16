@@ -225,6 +225,21 @@ describe('the phase 4 queries', () => {
   })
 })
 
+describe('queries.predictionHistory', () => {
+  it('keys on the distance and requests it as distance_m', async () => {
+    expect(queries.predictionHistory(5000).queryKey).toEqual(['/api/predictions/history', { distanceM: 5000 }])
+    vi.mocked(api.GET).mockResolvedValue({
+      data: { distance_m: 5000, points: [] },
+      error: undefined,
+      response: new Response(),
+    } as Awaited<ReturnType<typeof api.GET>>)
+
+    await invokeQueryFn(queries.predictionHistory(5000))
+
+    expect(api.GET).toHaveBeenCalledWith('/api/predictions/history', { params: { query: { distance_m: 5000 } } })
+  })
+})
+
 describe('queries.distributions', () => {
   it('keys on the path alone, one cached query for the whole view - no filters, the endpoint takes none', () => {
     expect(queries.distributions().queryKey).toEqual(['/api/distributions'])

@@ -6,7 +6,7 @@ Implemented in `src/activity_analysis/analysis/best_efforts.py`.
 Tested in `tests/test_best_efforts.py` against synthetic runs whose answers are exact.
 Every number quoted from the real store lives here and not in an assertion.
 
-Phase 4 consumes this table directly: the VDOT estimate in `vo2max.md` is an inversion of a best effort, and the race predictions in `predictions.md` are fitted through several of them.
+Phase 4 consumes this table directly: the VDOT estimate in `vo2max.md` is an inversion of a best effort, and the race predictions in `predictions.md` average the best runs' inversions.
 Whatever this module gets wrong about an effort therefore propagates into a predicted race time, which is why its limitations are stated at the end rather than left implicit.
 
 ## What is being computed
@@ -282,7 +282,7 @@ A mile is exactly 1609.344 m by international agreement, and every imperial targ
 
 **The original nine are a second constant, `VDOT_DISTANCES_M`**: 400 m, 1 km, 1 mile, 3 km, 5 km, 10 km, 15 km, half marathon and marathon, derived from this table by key so the two cannot disagree about a distance or fall out of one order.
 Extraction, the records ladder, the activity badges and the progression picker all read the twenty-two.
-VDOT and the race predictions read the nine, and only those three places do: the candidate selection in `fitness.fitness_rows`, the target list and the inside-the-reserve check in `fitness.race_predictions`, and the input filter in `queries.recent_eligible_efforts`.
+VDOT and the race predictions read the nine, and only those three places do: the candidate selection in `fitness.fitness_rows`, which the prediction series reads too, the target list in `fitness.race_predictions`, and the input filter in `queries.recent_eligible_efforts`.
 The reason is that both of those take a maximum over whatever candidates they are handed, so sharing one set would have made adding a rung to a ladder move `vdot`, `vdot_distance_key` and every predicted time across the whole store.
 `docs/reference/math/vo2max.md` argues it at length.
 

@@ -5,6 +5,7 @@ import { describeApiError, isNotFoundError } from '../api/errors'
 import { validateProgressionSearch } from '../api/progressionSearch'
 import { queries } from '../api/queries'
 import { ProgressionMark, ProgressionScatter } from '../charts/ProgressionScatter'
+import { MIN_PREDICTION_DISTANCE_M, PREDICTION_COLOR_VAR } from '../charts/progressionMath'
 import { Absent } from '../components/Absent'
 import { Section } from '../components/Section'
 import {
@@ -14,6 +15,7 @@ import {
   duration,
   heartRate,
   pace,
+  raceModelLabel,
   shortLocalDate,
 } from '../format'
 import styles from './Progression.module.css'
@@ -78,6 +80,18 @@ export function Progression() {
 
   const recordsQuery = useQuery(queries.records())
   const progressionQuery = useQuery(queries.progression(distanceKey))
+  // The distance in metres comes from the progression payload, as the
+  // picker's keys are not all distances in metres. Asked for only from 1 km
+  // up, which is where the API accepts it.
+  const historyDistanceM = progressionQuery.data?.distance_m
+  const predictsHere = historyDistanceM !== undefined && historyDistanceM >= MIN_PREDICTION_DISTANCE_M
+  const historyQuery = useQuery({
+    ...queries.predictionHistory(historyDistanceM ?? 0),
+    enabled: predictsHere,
+  })
+  // The key names the lines only once they are drawn; until then it says
+  // why they are not, as Trends and the Plan trajectory do.
+  const linesDrawn = predictsHere && historyQuery.isSuccess && historyQuery.data.points.length > 0
 
   function onDistanceChange(event: ChangeEvent<HTMLInputElement>) {
     // `to: '.'` is this route, whatever it is mounted at; naming
@@ -222,6 +236,7 @@ export function Progression() {
           <ProgressionScatter
             points={data.items}
             distanceM={data.distance_m}
+            predictions={historyQuery.data?.points}
             showIneligible={showIneligible}
             ariaLabel={`${distanceKeyLabel(data.distance_key)} progression`}
           />
@@ -244,6 +259,35 @@ export function Progression() {
                 Ineligible
               </li>
             </ul>
+            {/* The two prediction lines, in the colours every chart draws the same models in. */}
+            {predictsHere && historyQuery.isPending && (
+              <p className={styles.legend} role="status">
+                Loading the predicted times…
+              </p>
+            )}
+            {predictsHere && historyQuery.isError && (
+              <p className={styles.legend} role="alert">
+                Could not load the predicted times: {describeApiError(historyQuery.error)}
+              </p>
+            )}
+            {(linesDrawn || !predictsHere) && (
+              <ul className={styles.legend} aria-label="Predicted time">
+                {linesDrawn ? (
+                  <>
+                    <li className={styles.legendItem}>
+                      <span className={styles.lineSwatch} style={{ backgroundColor: `var(${PREDICTION_COLOR_VAR.best_efforts})` }} />
+                      {raceModelLabel('best_efforts')} prediction
+                    </li>
+                    <li className={styles.legendItem}>
+                      <span className={styles.lineSwatch} style={{ backgroundColor: `var(${PREDICTION_COLOR_VAR.ordinary_runs})` }} />
+                      {raceModelLabel('ordinary_runs')} prediction
+                    </li>
+                  </>
+                ) : (
+                  <li className={styles.legendItem}>Predictions start at 1 km</li>
+                )}
+              </ul>
+            )}
             {/*
              * A plain checkbox rather than another pill. The pills above
              * mean "which distance", and a second row of them here would

@@ -212,6 +212,18 @@ export const queries = {
       },
     }),
 
+  predictionHistory: (distanceM: number) =>
+    queryOptions({
+      queryKey: ['/api/predictions/history', { distanceM }],
+      queryFn: async () => {
+        const { data, error } = await api.GET('/api/predictions/history', {
+          params: { query: { distance_m: distanceM } },
+        })
+        if (error) throw error
+        return data
+      },
+    }),
+
   progression: (distanceKey: string) =>
     queryOptions({
       queryKey: ['/api/progression/{distance_key}', { distanceKey }],

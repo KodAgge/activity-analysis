@@ -135,13 +135,12 @@ From the store, base it on recent best efforts only:
 
 - `predictions.recent_best_efforts`: the best effort at each prediction distance in the predictions' 90-day window, with its activity id and date.
   Efforts at or near the goal distance weigh most, and of those the most recent.
-- `predictions.anchor`: the effort the best-effort predictions convert from.
 - `records`: each all-time record with `fitness_then`, to set against `fitness_now` when you judge how much an older record still says.
 
 Do not base it on the `ordinary_runs` prediction or on `hr_vo2max_smoothed`.
 The ordinary-run model reads slow after a breakthrough effort by design; `docs/reference/math/predictions.md`, "Why it runs slow after a breakthrough effort", explains why.
 
-When the anchor effort was on different ground from the goal, such as a road race with climb against a flat track, say which way that moves the estimate, and do not put a number on it unless the athlete or the store supplies one.
+When the best effort nearest the goal distance was on different ground from the goal, such as a road race with climb against a flat track, say which way that moves the estimate, and do not put a number on it unless the athlete or the store supplies one.
 
 If no effort in `recent_best_efforts` lies between half and twice the goal distance, give no estimate.
 Set `assessment.estimate_s` to null, say why in `estimate_reasoning`, and schedule a `time_trial` session within two weeks of this version's start, named by an entry in `checkpoints`.
@@ -361,17 +360,28 @@ Then give the way forward in the session's description: repeat the distance once
 
 Every week that has not ended carries `expected_vdot` and `expected_garmin_vo2max`, the values you expect at the end of that week, and the race week's at the race; the second only when there is a Garmin value to start from.
 
-- `expected_vdot` starts at the VDOT of `assessment.estimate_s`, which `propose` stamps as `provenance.estimate_vdot`.
-  Compute it with the same function: `uv run python -c "from activity_analysis.analysis.fitness import vdot; print(vdot(<goal distance_m>, <estimate_s>))"`, and the target time's VDOT the same way.
-  The curve runs from today's estimate toward the VDOT you expect on race day: for `likely` at least the target's, for `possible` near it, for `unlikely` short of it.
+- `expected_vdot` is the value you expect the best-efforts prediction series to have at the end of the week, the series the Trends view draws as its solid line.
+  It starts at `fitness_now.best_efforts_vdot`, cited as `/fitness_now/best_efforts_vdot`, whether or not `estimate_s` is null.
+  `propose` refuses a draft whose first week that has not ended sits more than `EXPECTED_VDOT_START_TOLERANCE` (1.9 VDOT units) from it (check 21), so the dotted line begins where the solid one ends.
+  When `fitness_now.best_efforts_vdot` is null, start from the VDOT of `assessment.estimate_s`, which `propose` stamps as `provenance.estimate_vdot`, and say so.
+  Compute that VDOT with the same function: `uv run python -c "from activity_analysis.analysis.fitness import vdot; print(vdot(<goal distance_m>, <estimate_s>))"`.
+  Each day's raw value is the mean VDOT of the three best runs in the 90 days up to it, and the series averages that value over the 42 days up to the day, so it trails the fitness the training builds.
+  With a run every second day, a rise held from one day is half in after 22 days and all in after 45, and a steady rise shows about 23 days late.
+  A fall shows nothing for 84 days, while the old best runs stay in the 90 days, and is all in after 129.
+  One breakthrough run among unchanged ones lifts the series by a third of its step, after 41 days; it takes three runs at a new level to reach it.
+  `docs/reference/math/predictions.md`, "The lag", has the measurement.
+  The race week's `expected_vdot` is the series value expected on race day, which trails race-day fitness by that lag.
+  The `likely`, `possible` or `unlikely` verdict rests on your race-day estimate, `assessment.estimate_s` against the target, not on where the curve ends.
+  Let the curve trail accordingly: it keeps rising through a taper.
   It is not `fitness_now.vdot`, which is one run's VDOT, easy runs included, and reads far below race fitness.
 - `expected_garmin_vo2max` starts at `fitness_now.garmin_vo2max`, cited as `/fitness_now/garmin_vo2max`.
   When that is null, as on a store without Garmin's VO2max, leave `expected_garmin_vo2max` out: there is nothing to start from, and `propose` does not ask for it.
   The value is unrounded, so write each week's `expected_garmin_vo2max` to one decimal.
   The watch shows it as a whole number that moves slowly, a point or two over a block of training, so expect little change.
-- Neither curve is a straight line: it flattens in base weeks and recovery weeks, rises through the quality blocks, and holds through the taper.
+- Neither curve is a straight line: each flattens in base weeks and recovery weeks and rises through the quality blocks.
+  Through the taper they differ: `expected_vdot` keeps rising, because the efforts of the block before it are still entering the 42-day mean, while `expected_garmin_vo2max` holds.
   Say in `estimate_reasoning` why the curves have the shape they have.
-- With `estimate_s` null, start `expected_vdot` from the VDOT of `predictions.anchor`'s effort, its distance read from `recent_best_efforts`, say so, and reset the curve from the time trial's result in the revision after it.
+- With `estimate_s` null, `expected_vdot` still starts at `fitness_now.best_efforts_vdot`; say so, and reset the curve from the time trial's result in the revision after it.
 
 Before proposing, read every description back and split any line that holds more than one instruction.
 

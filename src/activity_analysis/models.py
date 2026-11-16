@@ -445,6 +445,12 @@ FITNESS_SERIES_SCHEMA = pa.schema(
         #: a peak came from a 400 m or a half marathon.
         ("vdot_distance_key", pa.string()),
         ("vdot_smoothed", pa.float64()),
+        #: The prediction series on this run's local day, in VDOT: the 42-day
+        #: mean of each day's mean of the three best runs in the 90 days, and
+        #: of the calibrated heart-rate estimate. Null where no day in the 42
+        #: has a value. Times are inverted from these on read.
+        ("best_efforts_vdot", pa.float64()),
+        ("ordinary_runs_vdot", pa.float64()),
         #: Qualifying 30 s segments behind hr_vo2max, so a consumer can tell
         #: an estimate from 10 minutes of data from one from an hour.
         ("qualifying_segments", pa.int32()),

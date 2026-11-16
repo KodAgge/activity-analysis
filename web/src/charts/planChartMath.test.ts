@@ -8,8 +8,8 @@ import {
   linearScale,
   plotBox,
   roundedTopBar,
+  spanEndLabels,
   placeStripLabels,
-  pointLabelPlacement,
   thinLabels,
   timeLadder,
   trajectoryLayout,
@@ -211,23 +211,26 @@ describe('volumeSlots', () => {
 })
 
 describe('trajectoryDays', () => {
-  it('runs from the first version to the race', () => {
+  it('runs from the first point to the race', () => {
     expect(trajectoryDays([100, 112], [120], 135)).toEqual([100, 135])
   })
 
-  it('reaches back to a checkpoint dated before the first version', () => {
+  it('reaches back to a checkpoint dated before the first point', () => {
     expect(trajectoryDays([100], [95], 135)).toEqual([95, 135])
   })
 
-  it('reaches past the race for a version written after it, so no point leaves the plot', () => {
-    // The revision that records the result is written after race day.
-    expect(trajectoryDays([100, 140], [], 135)).toEqual([100, 140])
-    expect(trajectoryDays([150], [], 135)).toEqual([135, 150])
-  })
 
   it('gives a week before the race when nothing else is dated', () => {
     expect(trajectoryDays([], [], 135)).toEqual([128, 135])
     expect(trajectoryDays([135], [], 135)).toEqual([128, 135])
+  })
+})
+
+describe('spanEndLabels', () => {
+  it('names the day alone within a year, and adds the year to both ends across one', () => {
+    const day = (iso: string) => Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10))) / 86_400_000
+    expect(spanEndLabels(day('2027-02-05'), day('2027-03-13'))).toEqual(['5 Feb', '13 Mar'])
+    expect(spanEndLabels(day('2026-11-14'), day('2027-12-05'))).toEqual(['14 Nov 2026', '5 Dec 2027'])
   })
 })
 
@@ -264,37 +267,6 @@ describe('placeStripLabels', () => {
       'end',
       null,
       'start',
-    ])
-  })
-})
-
-describe('pointLabelPlacement', () => {
-  // Screen y grows downward, so a faster prediction has a smaller y. The
-  // plot's bottom at 300 is far enough that it does not decide anything.
-  it('reads a left-half label rightward and puts it on the side the next segment leaves', () => {
-    // Rising to the right: the line passes above-right of the first point.
-    expect(pointLabelPlacement([{ cx: 10, cy: 100 }, { cx: 400, cy: 60 }], 300, 300)).toEqual([
-      { anchor: 'start', below: true },
-      { anchor: 'end', below: false },
-    ])
-    // Falling to the right: the line passes below-right.
-    expect(pointLabelPlacement([{ cx: 10, cy: 60 }, { cx: 400, cy: 100 }], 300, 300)).toEqual([
-      { anchor: 'start', below: false },
-      { anchor: 'end', below: true },
-    ])
-  })
-
-  it('puts a lone point label above it', () => {
-    expect(pointLabelPlacement([{ cx: 10, cy: 60 }], 300, 300)).toEqual([{ anchor: 'start', below: false }])
-    expect(pointLabelPlacement([{ cx: 500, cy: 60 }], 300, 300)).toEqual([{ anchor: 'end', below: false }])
-  })
-
-  it('never sets a label below a point so near the bottom that it would reach the slowest rule', () => {
-    // A rising line would put the first label below, but 6 px above the
-    // bottom rule there is no room for a line of text.
-    expect(pointLabelPlacement([{ cx: 10, cy: 94 }, { cx: 400, cy: 60 }], 300, 100)).toEqual([
-      { anchor: 'start', below: false },
-      { anchor: 'end', below: false },
     ])
   })
 })

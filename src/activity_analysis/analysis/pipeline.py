@@ -9,7 +9,6 @@ rather than a loud one.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
 from typing import Any
 
 import pandas as pd
@@ -25,6 +24,7 @@ from activity_analysis.analysis.efficiency import (
     smooth_efficiency,
 )
 from activity_analysis.analysis.fitness import fitness_rows
+from activity_analysis.analysis.fitness import local_date as _local_date
 from activity_analysis.analysis.load import daily_series, hr_histogram, weekly_series
 from activity_analysis.analysis.metrics import activity_metrics
 from activity_analysis.analysis.profile import (
@@ -223,16 +223,6 @@ class ThresholdTables:
             empty_frame(TRAINING_SERIES_SCHEMA),
             empty_frame(TRAINING_LOAD_WEEKLY_SCHEMA),
         )
-
-
-def _local_date(start: pd.Timestamp, utc_offset_s: Any) -> date:
-    """The run's calendar day where it was run, as ``queries.LOCAL_DATE_SQL`` has it.
-
-    A run with no recorded offset, which is every GPX, is read in UTC there
-    too, so the two agree on which day its load falls.
-    """
-    offset = 0 if utc_offset_s is None or pd.isna(utc_offset_s) else int(utc_offset_s)
-    return (start + pd.Timedelta(seconds=offset)).date()
 
 
 def _max_hr_by_activity(

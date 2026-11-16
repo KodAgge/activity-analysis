@@ -19,12 +19,15 @@ import {
   DEFAULT_PLOT_WIDTH,
   FASTER_LABEL_DY,
   LADDER_LABEL_DY,
+  PREDICTION_COLOR_VAR,
   SLOWER_LABEL_Y,
+  breakAtGaps,
   diamondPath,
   inPaintOrder,
   pointStyle,
   readoutFlipsBelow,
   scatterLayout,
+  splitAtNulls,
   staircase,
   type EffortDatum,
   type PointStyle,
@@ -35,6 +38,7 @@ import styles from './ProgressionScatter.module.css'
 
 type ProgressionPoint = components['schemas']['ProgressionPoint']
 type RouteRun = components['schemas']['RouteRun']
+type PredictionHistoryPoint = components['schemas']['PredictionHistoryPoint']
 
 /** Every effort at one distance, laid out by elapsed time. */
 interface DistanceSource {
@@ -47,6 +51,12 @@ interface DistanceSource {
   points: ProgressionPoint[]
   /** The distance in metres, for the pace in the readout. */
   distanceM: number
+  /**
+   * `PredictionHistory.points`, verbatim. Drawn as one line per model over
+   * the efforts, inside the efforts' own date span; the ladder widens to
+   * hold them.
+   */
+  predictions?: PredictionHistoryPoint[]
 }
 
 /** Every run on one route, laid out by pace. */
@@ -186,6 +196,14 @@ function fromRun(r: RouteRun): ScatterPoint {
     label: `${when}, ${pace(r.speed_mps)}, ${DIRECTION_LABEL[r.direction]}${statusLabel(r.is_record, r.eligible, r.ineligible_reason)}`,
   }
 }
+
+/** The two prediction lines, in `PREDICTION_COLOR_VAR`; the efforts keep series 4. */
+const PREDICTION_LINES = [
+  { model: 'best_efforts', field: 'best_efforts_s', color: `var(${PREDICTION_COLOR_VAR.best_efforts})` },
+  { model: 'ordinary_runs', field: 'ordinary_runs_s', color: `var(${PREDICTION_COLOR_VAR.ordinary_runs})` },
+] as const
+/** A prediction run its neighbours do not join; `PlanTrajectory`'s lone run is the same size. */
+const PREDICTION_DOT_RADIUS_PX = 2.5
 
 /** The words the empty state uses, per kind. */
 const ABSENCE = {
@@ -435,7 +453,27 @@ export function ProgressionScatter(props: ProgressionScatterProps) {
   const width = panel.width > 0 ? panel.width : DEFAULT_PLOT_WIDTH
   const height = panel.height > 0 ? panel.height : DEFAULT_PLOT_HEIGHT
 
-  const layout = useMemo(() => scatterLayout(efforts, width, height), [efforts, width, height])
+  // Each prediction on its run's own wall clock, and only inside the
+  // efforts' span, which the lines never widen.
+  const predictions = props.kind === 'route' ? undefined : props.predictions
+  const lines = useMemo(() => {
+    if (predictions === undefined || efforts.length === 0) return []
+    const first = Math.min(...efforts.map((e) => e.t))
+    const last = Math.max(...efforts.map((e) => e.t))
+    const dated = predictions
+      .map((p) => ({ p, t: localCalendarTime(p.start_time_utc, p.utc_offset_s) }))
+      .filter(({ t }) => t >= first && t <= last)
+    return PREDICTION_LINES.map((line) => ({
+      ...line,
+      runs: splitAtNulls(breakAtGaps(dated.map(({ p, t }) => ({ t, v: p[line.field] })))),
+    }))
+  }, [predictions, efforts])
+  const predictedTimes = useMemo(() => lines.flatMap((line) => line.runs.flat().map((q) => q.v)), [lines])
+
+  const layout = useMemo(
+    () => scatterLayout(efforts, width, height, predictedTimes),
+    [efforts, width, height, predictedTimes],
+  )
   const stair = useMemo(() => staircase(efforts, layout), [efforts, layout])
 
   /*
@@ -617,6 +655,31 @@ export function ProgressionScatter(props: ProgressionScatterProps) {
            * including the record dots, whose centres it passes straight
            * through.
            */}
+          {lines.map((line) =>
+            line.runs.map((run) =>
+              run.length > 1 ? (
+                <polyline
+                  key={`${line.model}${String(run[0]?.t)}`}
+                  className={styles.predictionLine}
+                  data-series={line.model}
+                  stroke={line.color}
+                  points={run.map((q) => `${String(layout.x(q.t))},${String(layout.y(q.v))}`).join(' ')}
+                />
+              ) : (
+                // A run its neighbours do not join, as `PlanTrajectory` draws
+                // one, so the series reads the same across a gap.
+                <circle
+                  key={`${line.model}${String(run[0]?.t)}`}
+                  className={styles.predictionDot}
+                  data-series={line.model}
+                  fill={line.color}
+                  cx={layout.x(run[0]?.t ?? 0)}
+                  cy={layout.y(run[0]?.v ?? 0)}
+                  r={PREDICTION_DOT_RADIUS_PX}
+                />
+              ),
+            ),
+          )}
           {stair.length > 0 && (
             <polyline
               className={styles.staircase}

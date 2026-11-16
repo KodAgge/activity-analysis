@@ -16,6 +16,7 @@ import { PlanPaces } from '../charts/PlanPaces'
 import { PlanTrajectory } from '../charts/PlanTrajectory'
 import { PlanVolume } from '../charts/PlanVolume'
 import { PlanZoneMix } from '../charts/PlanZoneMix'
+import { MAX_HISTORY_DISTANCE_M, MIN_PREDICTION_DISTANCE_M } from '../charts/progressionMath'
 import {
   LEAD_IN_WEEKS,
   easyBand,
@@ -43,7 +44,10 @@ import {
   checkpointSessions,
   currentAndPending,
   displayedGoal,
+  expectedLine,
   isoDateOfDay,
+  latestBestEffortsS,
+  measuredFrom,
   nextSession,
   nextWeek,
   outcomeBySession,
@@ -52,10 +56,9 @@ import {
   sessionEntries,
   sessionEntry,
   shownVersion,
-  trajectory,
   weeklyDistance,
 } from '../components/plan/planMath'
-import type { ActivitySummary, PlanSummary, PlanVersion } from '../components/plan/planMath'
+import type { ActivitySummary, PlanSummary, PlanVersion, PredictionHistoryPoint } from '../components/plan/planMath'
 import {
   fitnessFirstDay,
   fitnessSeries,
@@ -164,7 +167,20 @@ const RUNS_FAILED = 'The runs could not be loaded, so only the plan is drawn.'
 
 /** Stands in for the runs' load while it loads or when there is no span to ask for. */
 const NO_LOADS: RunLoad[] = []
+/** Stands in for the prediction history while it loads, or for a goal under a kilometre. */
+const NO_HISTORY: PredictionHistoryPoint[] = []
 const NO_LOAD_WEEKS: LoadWeek[] = []
+
+/**
+ * The trajectory's and the outlook's note while the prediction history is
+ * not drawn. A goal under a kilometre never asks for it, and its disabled
+ * query stays pending for good, so pending alone is not loading.
+ */
+function historyNote(history: { isPending: boolean; isError: boolean; error: unknown }, enabled: boolean): string | null {
+  if (enabled && history.isError) return `The measured predictions could not be loaded: ${describeApiError(history.error)}.`
+  if (enabled && history.isPending) return 'Loading the measured predictions.'
+  return null
+}
 
 /** The fitness chart's note while its measured weeks are not drawn. */
 function fitnessNote(load: { isPending: boolean; isError: boolean }, hasSpan: boolean): string | null {
@@ -220,6 +236,13 @@ function GoalPlan({ goalId, plans, requested, openSession, today }: GoalPlanProp
   })
   const thresholdQuery = useQuery(queries.threshold())
   const fitnessQuery = useQuery(queries.fitness())
+  // The predicted time at the goal distance after each run, which the
+  // header, the trajectory and the VO2max outlook read. The API predicts
+  // nothing under a kilometre and draws no history past 100 km, so a goal
+  // outside those asks for none.
+  const goalDistanceM = entry?.plan.goal.distance_m ?? 0
+  const historyEnabled = goalDistanceM >= MIN_PREDICTION_DISTANCE_M && goalDistanceM <= MAX_HISTORY_DISTANCE_M
+  const historyQuery = useQuery({ ...queries.predictionHistory(goalDistanceM), enabled: historyEnabled })
 
   if (detailQuery.isPending) return <p>Loading the plan…</p>
   if (detailQuery.isError) {
@@ -255,7 +278,13 @@ function GoalPlan({ goalId, plans, requested, openSession, today }: GoalPlanProp
   // it was written, else the current estimate's for a version without.
   const zoneBoundaries = plan.provenance.zone_boundaries_bpm ?? thresholdQuery.data?.current?.boundaries_bpm ?? null
   const hr = { zoneBoundaries, runLoads }
-  const outlook = outlookSeries(detail, plan)
+  const history = historyQuery.data?.points ?? NO_HISTORY
+  // Known once the query has answered, or at once for a goal it is never
+  // asked for; until then the expected line does not start on a guess.
+  const historyKnown = !historyEnabled || historyQuery.isSuccess
+  const measuredNoteText = historyNote(historyQuery, historyEnabled)
+  const measuredStart = measuredFrom(plan)
+  const outlook = outlookSeries(plan, history, measuredStart)
   const fitness = fitnessSeries(plan, loadQuery.data?.weeks ?? NO_LOAD_WEEKS)
   const deviceNote = fitnessQuery.isPending
     ? "Loading Garmin's own VO2max."
@@ -279,6 +308,7 @@ function GoalPlan({ goalId, plans, requested, openSession, today }: GoalPlanProp
         result={plan.result ?? accepted?.result ?? null}
         week={week}
         today={today}
+        predictedTodayS={latestBestEffortsS(history)}
         zoneBoundaries={zoneBoundaries}
       />
       {entry.status === 'proposed' && (
@@ -388,6 +418,7 @@ function GoalPlan({ goalId, plans, requested, openSession, today }: GoalPlanProp
             startDate={span?.from ?? plan.goal.race_date}
             raceDate={plan.goal.race_date}
             deviceNote={deviceNote}
+            measuredNote={measuredNoteText}
           />
         </PlanCard>
         <PlanCard
@@ -420,13 +451,16 @@ function GoalPlan({ goalId, plans, requested, openSession, today }: GoalPlanProp
         <PlanCard
           className={chartCard.card}
           title="Trajectory"
-          note={`Predicted ${raceDistanceLabel(plan.goal.distance_m)} time from best efforts as each version was written, toward the target.`}
+          note={`Predicted ${raceDistanceLabel(plan.goal.distance_m)} time this version expects, dashed, against the one measured from best efforts and from ordinary runs, toward the target.`}
         >
           <PlanTrajectory
-            points={trajectory(detail, plan.goal.distance_m)}
+            expected={expectedLine(entry, historyKnown ? history : null)}
+            history={history}
             targetS={plan.goal.target_time_s}
             raceDate={plan.goal.race_date}
+            measuredFrom={measuredStart}
             checkpoints={checkpointSessions(plan)}
+            measuredNote={measuredNoteText}
           />
         </PlanCard>
       </PlanGrid>

@@ -89,9 +89,18 @@
   stroke-width: 1.5;
 }
 
-/* What was measured: filled, as the trajectory's points. */
+/* What was measured: a solid line in the colour the trajectory draws the
+   same best-efforts series in (`PREDICTION_COLOR_VAR`), apart from the ink
+   target; a dot for a lone run. */
 .measured {
-  fill: var(--ink);
+  fill: none;
+  stroke: var(--series-5);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.measuredDot {
+  fill: var(--series-5);
 }
 
 /* Garmin's own number by day: thin, so the expected line stays readable over it. */

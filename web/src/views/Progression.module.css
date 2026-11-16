@@ -315,6 +315,12 @@
   font-size: var(--text-label);
 }
 
+.lineSwatch {
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+}
+
 .legendItem {
   display: inline-flex;
   align-items: center;

@@ -2,6 +2,7 @@
 
 Module: `src/activity_analysis/analysis/fitness.py`, functions `vdot`, `hr_vo2max`, `smooth_series` and `fitness_rows`.
 Table: `data/derived/fitness_series.parquet`, one row per activity that produced at least one estimate.
+The table also carries the two race prediction series, `best_efforts_vdot` and `ordinary_runs_vdot`, which [predictions.md](predictions.md) derives.
 Served by `GET /api/fitness`.
 
 VO2max is the highest rate at which the body can take up and use oxygen, in millilitres per kilogram of body mass per minute.
@@ -89,8 +90,8 @@ A null flag means not known and is dropped like a known jump, the same reading `
 Since `ANALYSIS_VERSION` 10 a jump the measured speed confirms within 1% no longer disqualifies an effort; on the real store that raised two activities' `vdot`, a half marathon's by 7.6% and another run's by 8.6%, and gave a third a `vdot` where it had none.
 None of the three is inside the 90-day prediction window, so no predicted time moved.
 
-No distance floor is applied to the series, although `predictions.md` refuses efforts under 1 km as a prediction source, and the two rules differ deliberately.
-A prediction extrapolates from one anchor, so a noisy 400 m window would propagate into every predicted time; the series shows each raw per-activity point beneath a 42-day mean and names its distance in `vdot_distance_key`, so a consumer can exclude the 400 m points without a recompute.
+No distance floor is applied to `vdot`, although `predictions.md` refuses efforts under 1 km as a prediction source, and the two rules differ deliberately.
+The prediction series averages only three runs' VDOTs, so a noisy 400 m window would be a third of every predicted time's input; this series shows each raw per-activity point beneath a 42-day mean and names its distance in `vdot_distance_key`, so a consumer can exclude the 400 m points without a recompute.
 On the real store the all-time 400 m VDOT is within 2.3% of the 1 km's and 0.5% of the 5 km's, so the short points are not currently pulling the series.
 Should they prove noisy, applying the same floor to `fitness_rows` is a one-constant change.
 
@@ -98,7 +99,7 @@ Should they prove noisy, applying the same floor to `fitness_rows` is a one-cons
 
 `time_for_vdot` answers the other question: how long would a runner of a given VDOT take over a given distance.
 There is no closed form, but VDOT is strictly decreasing in time at a fixed distance, so a bisection over $[1, 200\,000]$ seconds converges; sixty iterations take the bracket below a millisecond.
-`predictions.md` uses it for the ordinary-run prediction.
+`predictions.md` uses it for every predicted time, and it is the only conversion from VDOT to a time in the project.
 
 ## The heart-rate estimate, Garmin's family
 

@@ -9,6 +9,12 @@
   gap: var(--space-4);
 }
 
+/* `PlanVolume.module.css`'s `.note`. */
+.note {
+  margin: 0;
+  color: var(--ink-dim);
+}
+
 .panel {
   width: 100%;
 }
@@ -44,12 +50,9 @@
 
 /*
  * A halo in the page's colour behind every label drawn inside the plot,
- * so one that lands on a rule, the target or the trajectory still reads:
- * a label near the plot's edge can only sit on a rule, whichever side of
- * its point it takes.
+ * so one that lands on a rule, the target or a line still reads.
  */
 .targetLabel,
-.pointLabel,
 .checkpointLabel {
   paint-order: stroke;
   stroke: var(--plan-surface, var(--page));
@@ -67,22 +70,12 @@
   font-variant-numeric: proportional-nums;
 }
 
-/* The order the versions were written in, behind their points. */
-.joint {
+/* The expected and measured lines; each takes its colour, and the
+   expected its dash, as presentation attributes. */
+.line {
   fill: none;
-  stroke: var(--ink);
   stroke-width: 1.5;
-}
-
-.point {
-  fill: var(--ink);
-}
-
-.pointLabel {
-  fill: var(--ink);
-  font-family: inherit;
-  font-size: var(--text-label);
-  font-variant-numeric: proportional-nums;
+  stroke-linejoin: round;
 }
 
 /* Hollow, so a checkpoint reads as a date marker rather than a value. */

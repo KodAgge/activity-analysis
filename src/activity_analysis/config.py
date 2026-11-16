@@ -56,7 +56,8 @@ INGEST_VERSION = 3
 #: and `training_load_weekly` with their weekly means. 14 was taken by an
 #: earlier draft of the same tables on the branch that built them and never
 #: reached a released store.
-ANALYSIS_VERSION = 15
+#: 16 adds `best_efforts_vdot` and `ordinary_runs_vdot` to fitness_series.
+ANALYSIS_VERSION = 16
 
 
 @dataclass(frozen=True)
